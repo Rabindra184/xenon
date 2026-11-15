@@ -19,6 +19,7 @@ import { saveRegistrations } from '../helpers/container-registration';
 import { drainLeaseQueues } from '../helpers/lease-queue';
 import { createRouter } from '../../src/app/index';
 import { JwtKeyService } from '../../src/services/token/JwtKeyService';
+import { resolveMcpGrant } from '../../src/services/token/mcpScopes';
 import { LeaseService, MCP_LEASE_DEFAULT_MS } from '../../src/services/lease/LeaseService';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { PrismaDeviceStore } from '../../src/data-service/prisma-store';
@@ -119,11 +120,16 @@ describe('MCP lease tools (integration)', function () {
     app.use('/xenon', createRouter({ ...DefaultPluginArgs }));
 
     member = await seedUser('MEMBER', { name: 'Lease Tools Member' });
+    // The claims a devices,read credential is minted for these scopes
+    // (resolveMcpGrant, as POST /auth/token mints them), plus the grant id the
+    // OAuth sign-in will add (`gid`), which /auth/token doesn't mint.
+    const grant = resolveMcpGrant('devices,read', ['xenon:devices:read', 'xenon:devices:lock']);
     bearer = await keys.sign(
       {
         sub: member.user.id,
-        scopes: 'devices,read',
-        scope: 'xenon:devices:read xenon:devices:lock',
+        scopes: grant.flat.join(','),
+        scope: grant.granular.join(' '),
+        roles: grant.roles,
         gid: GRANT,
       },
       { audience: 'xenon-mcp', ttlSeconds: 600 },

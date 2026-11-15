@@ -36,6 +36,9 @@ import { invokeWebDriver } from '../../src/mcp/invokeWebDriver';
 import { UNKNOWN_SESSION_BODY } from '../../src/middleware/commandAuth';
 import type { McpCaller } from '../../src/mcp/mcpCredential';
 import { prisma } from '../../src/prisma';
+import { issueToken } from '../../src/app/routers/auth';
+import { McpScopeError } from '../../src/services/token/mcpScopes';
+import { ApiKeyService } from '../../src/services/ApiKeyService';
 import { config } from '../../src/config';
 import { DefaultPluginArgs } from '../../src/interfaces/IPluginArgs';
 
@@ -72,20 +75,30 @@ describe('MCP session capabilities and recording tools (integration)', function 
   let savedBasePath: string;
   let restoreContainer: () => void;
 
-  async function callTool(
-    bearer: string,
-    name: string,
-    args: Record<string, unknown> = {},
-  ): Promise<{ result: ToolResult; origin: string }> {
+  /** A bearer token, or the key pair headers. */
+  type Credential = string | Record<string, string>;
+
+  async function connect(credential: Credential): Promise<{ client: Client; origin: string }> {
     const server: http.Server = await servers.serve(app);
     const { port } = server.address() as AddressInfo;
     const origin = `http://127.0.0.1:${port}`;
     const client = new Client({ name: 'mcp-session-tools-spec', version: '1.0.0' });
+    const headers =
+      typeof credential === 'string' ? { authorization: `Bearer ${credential}` } : credential;
     await client.connect(
       new StreamableHTTPClientTransport(new URL(`${origin}/xenon/mcp`), {
-        requestInit: { headers: { authorization: `Bearer ${bearer}` } },
+        requestInit: { headers },
       }),
     );
+    return { client, origin };
+  }
+
+  async function callTool(
+    credential: Credential,
+    name: string,
+    args: Record<string, unknown> = {},
+  ): Promise<{ result: ToolResult; origin: string }> {
+    const { client, origin } = await connect(credential);
     try {
       return { result: (await client.callTool({ name, arguments: args })) as ToolResult, origin };
     } finally {
@@ -93,13 +106,32 @@ describe('MCP session capabilities and recording tools (integration)', function 
     }
   }
 
-  const bearerFor = (user: SeededUser, scopes: string, scope: string) =>
-    keys.sign(
-      { sub: user.user.id, scopes, scope, gid: `grant-${stamp}` },
-      { audience: 'xenon-mcp', ttlSeconds: 600 },
-    );
+  async function listedTools(credential: Credential): Promise<string[]> {
+    const { client } = await connect(credential);
+    try {
+      return (await client.listTools()).tools.map((t) => t.name);
+    } finally {
+      await client.close();
+    }
+  }
+
+  /**
+   * A xenon-mcp token as POST /auth/token mints it (issueToken): for a
+   * credential of `user`'s with these flat scopes, granted these MCP scopes.
+   */
+  const bearerFor = async (user: SeededUser, flatScopes: string, mcpScopes: string[]) =>
+    (
+      await issueToken(
+        { userId: user.user.id, role: user.user.role, scopes: flatScopes },
+        { audience: 'xenon-mcp', scopes: mcpScopes },
+      )
+    ).token;
   const memberBearer = () =>
-    bearerFor(member, 'sessions,devices', 'appium:use xenon:devices:read xenon:devices:lock');
+    bearerFor(member, 'sessions,devices', [
+      'appium:use',
+      'xenon:devices:read',
+      'xenon:devices:lock',
+    ]);
 
   before(async () => {
     savedAuthDisabled = config.authDisabled;
@@ -246,17 +278,17 @@ describe('MCP session capabilities and recording tools (integration)', function 
   });
 
   it("recording tools start and stop a group, in Studio's answer shape", async () => {
-    const bearer = await bearerFor(admin, 'devices', 'xenon:recordings');
+    const bearer = await bearerFor(admin, 'devices', ['xenon:recordings']);
     const started = await callTool(bearer, 'xenon_start_recording', {
       authToken: 'ignored',
       udids: [PHONE.record],
     });
     expect(started.result.isError, started.result.content[0].text).to.not.equal(true);
     expect(answerOf(started.result)).to.deep.equal({ groupId: `group-${stamp}` });
-    expect(orchestrator.start.firstCall.args[0].phones).to.deep.equal([
+    expect(orchestrator.start.lastCall.args[0].phones).to.deep.equal([
       { udid: PHONE.record, host: DEVICE_HOST },
     ]);
-    expect(orchestrator.start.firstCall.args[0].actorId).to.equal(admin.user.id);
+    expect(orchestrator.start.lastCall.args[0].actorId).to.equal(admin.user.id);
 
     const stopped = await callTool(bearer, 'xenon_stop_recording', { groupId: `group-${stamp}` });
     expect(stopped.result.isError, stopped.result.content[0].text).to.not.equal(true);
@@ -266,8 +298,40 @@ describe('MCP session capabilities and recording tools (integration)', function 
     expect(orchestrator.stop.calledWith(`group-${stamp}`)).to.equal(true);
   });
 
+  const RECORDING_TOOLS = ['xenon_start_recording', 'xenon_stop_recording'];
+
+  it("a sessions-only credential isn't offered the recording tools, nor can it mint them", async () => {
+    // A key pair's MCP scopes are what its flat scopes allow (mcpScopesAllowedBy).
+    const key = await Container.get(ApiKeyService).create({
+      name: 'sessions only',
+      scopes: ['sessions'],
+      userId: member.user.id,
+    });
+    const keyPair = { 'x-xenon-access-key': member.user.accessKey, 'x-xenon-token': key.raw };
+    const listed = await listedTools(keyPair);
+    expect(listed).to.include('xenon_session_capabilities');
+    for (const tool of RECORDING_TOOLS) expect(listed).to.not.include(tool);
+
+    // Nor does POST /auth/token give a sessions credential xenon:recordings.
+    let refused: any;
+    await bearerFor(member, 'sessions', ['xenon:recordings']).catch((e) => (refused = e));
+    expect(refused).to.be.instanceOf(McpScopeError);
+    expect(refused.code).to.equal('scope_exceeds_key');
+  });
+
+  it("a devices credential's minted token lists the recording tools, and a member's start works", async () => {
+    const bearer = await bearerFor(member, 'devices', ['xenon:recordings']);
+    const listed = await listedTools(bearer);
+    for (const tool of RECORDING_TOOLS) expect(listed).to.include(tool);
+
+    const started = await callTool(bearer, 'xenon_start_recording', { udids: [PHONE.record] });
+    expect(started.result.isError, started.result.content[0].text).to.not.equal(true);
+    expect(answerOf(started.result)).to.deep.equal({ groupId: `group-${stamp}` });
+    expect(orchestrator.start.lastCall.args[0].actorId).to.equal(member.user.id);
+  });
+
   it('xenon_start_recording refuses a phone the caller cannot see as REST does', async () => {
-    const bearer = await bearerFor(admin, 'devices', 'xenon:recordings');
+    const bearer = await bearerFor(admin, 'devices', ['xenon:recordings']);
     const { result } = await callTool(bearer, 'xenon_start_recording', {
       udids: ['no-such-phone'],
     });
@@ -290,6 +354,16 @@ describe('MCP xenon_execute_script (integration)', function () {
   forbidRealAdb();
   const pair = useHubAndNode(scratch, [SessionDeviceLogs]);
   const hubServers: http.Server[] = [];
+
+  // The specs point PluginContext at the node's or hub's app; the pair's own
+  // restore copies only the fields the context had, so put it back here.
+  let savedApp: PluginContext['expressApp'];
+  beforeEach(() => {
+    savedApp = Container.get(PluginContext).expressApp;
+  });
+  afterEach(() => {
+    Container.get(PluginContext).expressApp = savedApp;
+  });
 
   beforeEach(() => {
     // The node records the session's device log through this machine's adb; not here.
@@ -328,7 +402,7 @@ describe('MCP xenon_execute_script (integration)', function () {
     return sessionId;
   }
 
-  it("xenon_execute_script runs xe:getAutowaitProperties on the caller's session, as the session's own command", async () => {
+  it("xenon_execute_script runs xe:getAutowaitProperties on the caller's session and touches its idle clock, as a client's command does", async () => {
     const sessionId = await nodeWithSession();
     await scratch.db.device.updateMany({
       where: { udid: 'phone-1' },

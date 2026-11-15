@@ -390,8 +390,8 @@ paths:
         - `audience: xenon-mcp`: a token for an MCP gateway, valid 24 hours by default
           (`XENON_MCP_TOKEN_TTL_SEC`). It carries granular `scopes` (by default `appium:use` and
           `xenon:devices:read`, as far as the caller's scopes allow) and, as a REST bearer token, only
-          the flat scopes those need (`appium:use` gives `sessions`, `xenon:devices:lock` gives
-          `devices`). When the grant includes `appium:use` the answer also has a `sessionToken`
+          the flat scopes those need (`appium:use` gives `sessions`, `xenon:devices:lock` and
+          `xenon:recordings` give `devices`). When the grant includes `appium:use` the answer also has a `sessionToken`
           (audience `xenon-session`, same lifetime) to put in an Appium session's
           `xe:options.sessionToken`. It carries the `sessions` scope, and `admin` only when the
           credential minting it has `admin` and the grant is the default one (no `scopes` asked for) or
@@ -409,9 +409,8 @@ paths:
         without it.
 
         Granular scopes a credential may grant: `read` gives `xenon:devices:read` and
-        `xenon:analytics:read`; `sessions` gives `appium:use`, `xenon:recordings` and `xenon:execute`;
-        `devices` gives `xenon:devices:read`, `xenon:devices:lock` and `xenon:recordings`; `admin` gives
-        all of them. `xenon:execute` (the `xenon_execute_script` tool, which runs Xenon's `xe:` scripts on
+        `xenon:analytics:read`; `sessions` gives `appium:use` and `xenon:execute`; `devices` gives
+        `xenon:devices:read`, `xenon:devices:lock` and `xenon:recordings`; `admin` gives all of them. `xenon:execute` (the `xenon_execute_script` tool, which runs Xenon's `xe:` scripts on
         the agent's own session) is never in the default grant, and adds no scope on the API.
 
         Cookie callers need a same-host `Origin` or `Referer`.

@@ -13,6 +13,7 @@ import { CommandCallerVerifier } from '../../src/middleware/commandCaller';
 import { readBasicCredential } from '../../src/middleware/basicCredential';
 import { JwtKeyService } from '../../src/services/token/JwtKeyService';
 import { UserService } from '../../src/services/UserService';
+import { mintSessionToken } from '../../src/app/routers/auth';
 
 /**
  * Per-command auth takes a `xenon-session` token as the Basic password, with
@@ -101,6 +102,8 @@ describe('per-command auth: a xenon-session token as the Basic password', () => 
     return loopback.serve(app);
   }
 
+  // Hand-signed on purpose, for the refusals: tokens production never mints
+  // (expired, another audience, no `sessions`, a departed user).
   const sessionToken = (
     sub: string,
     opts: { audience?: string; ttlSeconds?: number; scopes?: string } = {},
@@ -109,6 +112,10 @@ describe('per-command auth: a xenon-session token as the Basic password', () => 
       { sub, teamId: null, scopes: opts.scopes ?? 'sessions' },
       { audience: opts.audience ?? 'xenon-session', ttlSeconds: opts.ttlSeconds ?? 600 },
     );
+
+  /** What xenon_session_capabilities hands out for `userId`, minted as it mints it. */
+  const minted = async (userId: string) =>
+    (await mintSessionToken({ userId, scopes: 'sessions,devices' })).sessionToken;
 
   async function expectRefused(res: request.Response) {
     expect(res.status).to.equal(404);
@@ -132,7 +139,7 @@ describe('per-command auth: a xenon-session token as the Basic password', () => 
     const server = await lab();
     const res = await request(server)
       .get('/wd/hub/session/s-alice/url')
-      .set(basic('xenon-session', await sessionToken('alice')));
+      .set(basic('xenon-session', await minted('alice')));
     expect(res.status, res.text).to.equal(200);
     expect(ran).to.deep.equal(['s-alice']);
     expect(verifyKeyPair.called).to.equal(false);
@@ -140,7 +147,7 @@ describe('per-command auth: a xenon-session token as the Basic password', () => 
 
   it("refuses it for a session the token's user doesn't own", async () => {
     const server = await lab();
-    const token = await sessionToken('alice');
+    const token = await minted('alice');
     await expectRefused(
       await request(server).get('/wd/hub/session/s-bob/url').set(basic('xenon-session', token)),
     );

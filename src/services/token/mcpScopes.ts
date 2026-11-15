@@ -13,7 +13,9 @@ const FLAT_TO_GRANULAR: Record<Exclude<FlatScope, 'admin'>, readonly string[]> =
   read: ['xenon:devices:read', 'xenon:analytics:read'],
   // xenon:execute is the `xenon_execute_script` tool: Xenon's own `xe:` scripts
   // on a session the token started with appium:use, so only `sessions` allows it.
-  sessions: ['appium:use', 'xenon:recordings', 'xenon:execute'],
+  // xenon:recordings is `devices`' alone: a recording of phones holds them, and
+  // REST's recordingsScopeGuard takes `devices` for it (recordingsScope.ts).
+  sessions: ['appium:use', 'xenon:execute'],
   devices: ['xenon:devices:read', 'xenon:devices:lock', 'xenon:recordings'],
 };
 
@@ -26,21 +28,29 @@ export const DEFAULT_MCP_SCOPES: readonly string[] = ['appium:use', 'xenon:devic
 
 /**
  * Down-map: the minimal flat scope a granted granular scope needs so the same
- * token also works on the Xenon REST endpoints the MCP tools call. Only two
- * tools hit scope-gated REST endpoints:
- *   - appium:use       → 'sessions' (createSession authorizeSessionRequest requires it)
- *   - xenon:devices:lock → 'devices' (sdk-leases mutations are scopeGuard(['devices']))
- * xenon:devices:read / xenon:analytics:read / xenon:recordings hit role-gated-only
- * endpoints (roleGuard('MEMBER'), no scopeGuard — verified against grid.ts GET
- * /devices, dashboard healing reads, and recordings.ts), so they contribute NO
- * flat scope. Nor does xenon:execute: its tool calls no REST endpoint, only
- * `executeScript` on the WebDriver session appium:use opened, which that
- * session's own credentials authorize. Omitting them keeps the down-mapped flat set a strict subset of
- * the issuing key's own flat scopes — no cross-domain privilege escalation.
+ * token also works on the Xenon REST endpoints the MCP tools call. Three tools
+ * hit scope-gated REST endpoints:
+ *   - appium:use         → 'sessions' (createSession authorizeSessionRequest requires it)
+ *   - xenon:devices:lock → 'devices' (sdk-leases mutations are mutationScopeGuard(['devices']))
+ *   - xenon:recordings   → 'devices' (a recording of phones, and every write on its
+ *     group, takes `devices` in recordingsScopeGuard, recordingsScope.ts)
+ * xenon:devices:read / xenon:analytics:read hit role-gated-only endpoints
+ * (roleGuard('MEMBER'), no scope guard: grid.ts GET /devices, the dashboard's
+ * healing reads), so they contribute NO flat scope. Nor does xenon:execute: its
+ * tool calls no REST endpoint, only `executeScript` on a WebDriver session the
+ * caller owns.
+ *
+ * Each down-mapped scope is granted (FLAT_TO_GRANULAR) only by the flat scope it
+ * maps to, so for a key without `admin` the down-mapped flat set is a subset of
+ * the key's own flat scopes: no cross-domain privilege escalation. An `admin` key
+ * may grant every granular scope, so its narrowed token can carry `sessions` or
+ * `devices`, which it doesn't hold by name; each is less than `admin`, which
+ * passes every scope check (ApiKeyService.hasScope).
  */
 const GRANULAR_TO_FLAT: Record<string, FlatScope> = {
   'appium:use': 'sessions',
   'xenon:devices:lock': 'devices',
+  'xenon:recordings': 'devices',
 };
 
 export class McpScopeError extends Error {
