@@ -8,9 +8,9 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
-## Unreleased
+## 2.39.0
 
-**Agents sign in on a hub that can't reach the internet, without a setting.**
+**Agents sign in on a hub that can't reach the internet, without a setting, and say the role they act as.**
 
 No database migration. On a hub, only the hub needs this release.
 

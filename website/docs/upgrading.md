@@ -53,6 +53,10 @@ Upgrade each server the same way. Whether the order matters is up to the release
 
 [Hub and nodes](./hub-and-nodes.md) explains how the two kinds of server work together.
 
+## From 2.38 to 2.39
+
+Version 2.39.0 brings no database migration, and nothing to do. On a hub that can't reach the internet, agents such as Claude Code and Codex now sign in without `XENON_MCP_CLIENT_DOCUMENTS=off`: after one failed sign-in the hub asks agents to register with it for an hour, and the browser shows a page saying what to do (Claude Code first needs `claude mcp logout xenon`). Setting the variable still skips that first failed sign-in. `GET /xenon/api/auth/me` and the `xenon_lab_info` tool also give `actsAs`, the role an agent acts as. On a hub, only the hub needs this release.
+
 ## From 2.37 to 2.38
 
 Version 2.38.0 brings two database migrations, applied at startup: two columns on `Lease` and two new tables for agents' sign-ins. The hub now serves MCP at `/xenon/mcp`, so coding agents such as Claude Code, Codex and Cursor can use the lab and sign in through your browser; the dashboard's **AI agents** page shows how to add it to each. On a hub, only the hub needs this release: a node doesn't serve MCP. Behind a reverse proxy, set `trustProxy` (as for 2.37), since agents' sign-ins are limited per caller address too.
