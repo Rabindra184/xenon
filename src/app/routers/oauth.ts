@@ -28,6 +28,7 @@ import {
 } from '../../mcp/publicOrigin';
 import { XenonOAuthProvider, grantForRole } from '../../services/oauth/oauthProvider';
 import { ClientStore } from '../../services/oauth/clientStore';
+import { clientDocumentsAccepted } from '../../services/oauth/clientMetadataDocument';
 import { AuthCodes } from '../../services/oauth/authCodes';
 import { PendingAuthorizations } from '../../services/oauth/pendingAuthorizations';
 import { RequestLimiter, callerAddress, requestLimiter } from '../../services/oauth/callerAddress';
@@ -569,7 +570,8 @@ export function authorizationServerMetadata(req: Request) {
     code_challenge_methods_supported: ['S256'],
     token_endpoint_auth_methods_supported: ['none'],
     revocation_endpoint_auth_methods_supported: ['none'],
-    client_id_metadata_document_supported: true,
+    // XENON_MCP_CLIENT_DOCUMENTS=off on a lab that can't reach the internet.
+    client_id_metadata_document_supported: clientDocumentsAccepted(),
   };
 }
 

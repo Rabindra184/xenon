@@ -14,6 +14,7 @@ import {
   ClientMetadata,
   ClientMetadataRefused,
   RefusalReason,
+  clientDocumentsAccepted,
   fetchClientMetadataDocument,
 } from './clientMetadataDocument';
 import { GrantStore } from './grantStore';
@@ -22,6 +23,12 @@ import { GrantStore } from './grantStore';
 export const CLIENT_UNUSED_DROP_MS = 30 * 24 * 60 * 60 * 1000;
 /** At most this many registered agents, after the unused ones are dropped. */
 export const MAX_REGISTERED_CLIENTS = 500;
+/**
+ * A client registered this recently is never evicted to make room: it holds
+ * no grant until its user allows it, and its sign-in (authorize, consent, the
+ * code exchange) must find it. The pending request waits 10 minutes.
+ */
+export const NEW_CLIENT_KEPT_MS = 10 * 60 * 1000;
 /**
  * Registrations made from one address in an hour, at most
  * (`registerClient`'s `address`; the route passes it through `forAddress`).
@@ -206,7 +213,7 @@ export class ClientStore implements OAuthRegisteredClientsStore {
    * Register an agent. Refused (`too_many_requests`) as the 21st from
    * `address` in an hour, or when the hub holds 500 and none can be evicted:
    * clients unused for 30 days go first, then the longest-unused ones that
-   * hold no live sign-in.
+   * hold no live sign-in and weren't registered in the last 10 minutes.
    */
   async registerClient(
     client: Omit<OAuthClientInformationFull, 'client_id' | 'client_id_issued_at'>,
@@ -275,6 +282,7 @@ export class ClientStore implements OAuthRegisteredClientsStore {
   /** The name to show for a client: its registration's, its document's, or its URL's host. */
   async nameOf(clientId: string): Promise<string> {
     if (isClientMetadataDocumentId(clientId)) {
+      if (!clientDocumentsAccepted()) return cleanName(new URL(clientId).host);
       try {
         return cleanName(
           (await this.fetchDocument(clientId)).client_name ?? new URL(clientId).host,
@@ -296,20 +304,27 @@ export class ClientStore implements OAuthRegisteredClientsStore {
     return r.count;
   }
 
-  /** At the cap, evict the longest-unused clients holding no live sign-in; refuse if none. */
+  /**
+   * At the cap, evict the longest-unused clients holding no live sign-in and
+   * registered more than NEW_CLIENT_KEPT_MS ago; refuse if none.
+   */
   private async makeRoom(): Promise<void> {
     const over = (await prisma.mcpClient.count()) - MAX_REGISTERED_CLIENTS + 1;
     if (over <= 0) return;
     const signedIn = [...(await Container.get(GrantStore).clientsWithLiveGrants())];
     const evict = await prisma.mcpClient.findMany({
-      where: { id: { notIn: signedIn } },
+      where: {
+        id: { notIn: signedIn },
+        createdAt: { lt: new Date(Date.now() - NEW_CLIENT_KEPT_MS) },
+      },
       orderBy: { lastUsedAt: 'asc' },
       select: { id: true },
       take: over,
     });
     if (evict.length < over) {
       throw new TooManyRequestsError(
-        `This hub already has ${MAX_REGISTERED_CLIENTS} registered agents, each signed in`,
+        `This hub already has ${MAX_REGISTERED_CLIENTS} registered agents, each signed in or ` +
+          'registered in the last 10 minutes. Try again later.',
       );
     }
     const ids = evict.map((c: { id: string }) => c.id);
@@ -318,6 +333,11 @@ export class ClientStore implements OAuthRegisteredClientsStore {
   }
 
   private async documentClient(url: string): Promise<OAuthClientInformationFull> {
+    if (!clientDocumentsAccepted()) {
+      throw new InvalidClientError(
+        "This hub doesn't read client_id documents. Register the agent with the hub instead.",
+      );
+    }
     let doc: ClientMetadata;
     try {
       doc = await this.fetchDocument(url);

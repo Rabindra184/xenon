@@ -24,12 +24,17 @@ export interface WebDriverCall {
  * PluginContext) at `<basePath>/session/<id>/<path>`, as `caller`.
  *
  * The request is the session's own command, as a client's is: it goes
- * through the session gateway, where per-command auth takes the preset
- * caller (PRESET_CALLER, on the request object) as the verified caller and
- * still requires them to own the session (or be an override admin); a hub
- * forwards a node's session to its node; and the plugin's interceptor runs it
- * (autowait, healing, the command log, the idle clock). It is never a
- * `/wd-internal` call, which would skip all of that.
+ * through the session gateway; a hub forwards a node's session to its node;
+ * and the plugin's interceptor runs it (autowait, healing, the command log,
+ * the idle clock). It is never a `/wd-internal` call, which would skip all of
+ * that.
+ *
+ * The owner is checked here only with per-command auth on
+ * (XENON_REQUIRE_COMMAND_AUTH): the gateway then takes the preset caller
+ * (PRESET_CALLER, on the request object) as the verified caller and requires
+ * them to own the session (or be an override admin). With it off nothing on
+ * the way checks, as for any client, so a tool that drives a session checks
+ * ownership itself before calling this (execute.ts, decideCallerAccess).
  *
  * Resolves with the WebDriver answer's status and body, errors included. A
  * command that hasn't answered in WEBDRIVER_CALL_TIMEOUT_MS is a ToolRefusal

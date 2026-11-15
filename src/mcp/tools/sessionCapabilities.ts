@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { decodeJwt } from 'jose';
 import { Container } from 'typedi';
 import { defineTool } from '../tool';
 import { invokeApi } from '../invokeApi';
@@ -18,6 +19,8 @@ import { PluginContext } from '../../PluginContext';
  * to run on this lab as the signed-in user. appium-mcp drives; Xenon gives
  * the lab: the agent passes `remoteServerUrl` and `capabilities` through.
  *
+ * Answers `{ remoteServerUrl, capabilities, expiresAt }`.
+ *
  * - `remoteServerUrl` is this server's WebDriver URL: the origin the agent
  *   reached `/xenon/mcp` at, plus Appium's base path.
  * - `capabilities` carry a fresh `xe:options.sessionToken` (audience
@@ -28,8 +31,15 @@ import { PluginContext } from '../../PluginContext';
  *   Basic password, the user `xenon-session` (basicCredential.ts). It adds no
  *   secret the capabilities don't already hold.
  *
- * The token lasts as long as a `xenon-mcp` token (XENON_MCP_TOKEN_TTL_SEC):
- * with per-command auth on, a session that outlives it is refused after that.
+ * The token lasts as long as a `xenon-mcp` token (XENON_MCP_TOKEN_TTL_SEC),
+ * answered as `expiresAt`: with per-command auth on, a session that outlives
+ * it is refused after that.
+ * - Under an agent's browser sign-in (the caller has a `grantId`) it lasts
+ *   all of that, not the access token's remaining hour: it carries the
+ *   grant's `gid`, so revoking the sign-in refuses it at once, and an agent
+ *   whose session outlived its hour would otherwise lose it mid-test.
+ * - For any other caller it never outlives the credential that asked for it
+ *   (mintedLifetimeSec), as POST /auth/token's tokens don't.
  */
 
 const sessionCapabilitiesParams = z.object({
@@ -85,11 +95,13 @@ export const sessionCapabilitiesTool = defineTool({
   scope: 'appium:use',
   description:
     "What appium-mcp's create-session call needs to run an Appium session on this Xenon lab " +
-    'as you. Returns {remoteServerUrl, capabilities}: pass both to the create-session tool ' +
-    'unchanged, adding the capabilities your app needs (platformName, app, ...). ' +
-    'capabilities carry xe:options.sessionToken, which makes the session yours. With a device ' +
-    'from xenon_acquire_device, pass its lockId and leaseToken: the capabilities then name that ' +
-    'device and its lease. The token lasts about an hour; ask again for a new session after that.',
+    'as you. Returns {remoteServerUrl, capabilities, expiresAt}: pass remoteServerUrl and ' +
+    'capabilities to the create-session tool unchanged, adding the capabilities your app ' +
+    'needs (platformName, app, ...). capabilities carry xe:options.sessionToken, which makes ' +
+    'the session yours. With a device from xenon_acquire_device, pass its lockId and ' +
+    'leaseToken: the capabilities then name that device and its lease. expiresAt (epoch ms) ' +
+    'is when the token ends: a day by default, or when the API key or token you connected ' +
+    'with ends, if sooner. Ask again for each new session.',
   params: sessionCapabilitiesParams,
   annotations: { readOnlyHint: true, destructiveHint: false },
   async run(args, caller) {
@@ -105,11 +117,13 @@ export const sessionCapabilitiesTool = defineTool({
         ? await leaseCapabilities(caller, args.lockId, args.leaseToken)
         : {};
 
-    // Under the caller's sign-in grant, so revoking it stops the session's commands too.
+    // Under the caller's sign-in grant, so revoking it stops the session's
+    // commands too; for that reason it isn't cut to the access token's hour.
     const { sessionToken } = await mintSessionToken(
-      caller.auth,
+      caller.grantId ? { ...caller.auth, credentialExpiresAt: undefined } : caller.auth,
       caller.grantId ? { grantId: caller.grantId } : {},
     );
+    const exp = decodeJwt(sessionToken).exp;
     const options: Record<string, any> = { ...(alwaysMatch[XE_OPTIONS] ?? {}), sessionToken };
     if (args.lockId && args.leaseToken) {
       options.leaseId = args.lockId;
@@ -122,6 +136,7 @@ export const sessionCapabilitiesTool = defineTool({
     return {
       remoteServerUrl: webDriverUrl(callerOrigin(caller), commandAuth ? sessionToken : undefined),
       capabilities: { alwaysMatch, firstMatch: [{}] },
+      expiresAt: typeof exp === 'number' ? exp * 1000 : null,
     };
   },
 });

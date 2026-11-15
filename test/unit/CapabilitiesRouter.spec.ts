@@ -3,8 +3,18 @@ import { expect } from 'chai';
 import { Container } from 'typedi';
 import { buildCapabilities } from '../../src/app/routers/capabilities';
 import { PluginContext } from '../../src/PluginContext';
+import { config } from '../../src/config';
 
 describe('capabilities payload', () => {
+  let savedAuthDisabled: boolean;
+  beforeEach(() => {
+    savedAuthDisabled = config.authDisabled;
+    config.authDisabled = false;
+  });
+  afterEach(() => {
+    config.authDisabled = savedAuthDisabled;
+  });
+
   it('reports version and the hub feature set', () => {
     const caps = buildCapabilities();
     expect(caps.version).to.be.a('string').and.not.equal('');
@@ -75,6 +85,13 @@ describe('capabilities payload', () => {
         'xenon_session_capabilities',
       ],
     });
+  });
+
+  it('mcpServer.oauth is false with auth disabled: there is no sign-in to offer', () => {
+    config.authDisabled = true;
+    expect(buildCapabilities().features.mcpServer?.oauth).to.equal(false);
+    config.authDisabled = false;
+    expect(buildCapabilities().features.mcpServer?.oauth).to.equal(true);
   });
 
   it("answered to a request, mcpServer.url is this server's MCP endpoint as agents reach it", async () => {

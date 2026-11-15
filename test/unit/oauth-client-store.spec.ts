@@ -182,6 +182,49 @@ describe('the sign-in client store', () => {
     await prisma.mcpGrant.deleteMany({});
   });
 
+  /** Live sign-ins for the seeded clients `from` to `to` (exclusive). */
+  async function signInSeeded(from: number, to: number, now: number) {
+    await prisma.mcpGrant.createMany({
+      data: Array.from({ length: to - from }, (_, k) => ({
+        id: `grant-${from + k}`,
+        userId: 'someone',
+        clientId: `seeded-${from + k}`,
+        scopes: 'xenon:devices:read',
+        tokenHash: `h${from + k}`,
+        createdAt: new Date(now),
+        lastUsedAt: new Date(now),
+        expiresAt: new Date(now + 90 * DAY),
+      })),
+    });
+  }
+
+  it('never evicts a client registered in the last 10 minutes: its sign-in may not have finished', async () => {
+    const now = Date.now();
+    const last = MAX_REGISTERED_CLIENTS - 1;
+    // Every client is signed in but the newest, which registered 5 minutes
+    // ago and whose user hasn't allowed it yet.
+    await seedFullStore((i) => new Date(now - (i === last ? 5 : 60 * 24) * 60_000));
+    await prisma.mcpGrant.deleteMany({});
+    await signInSeeded(0, last, now);
+    const err = await oauthError(store.registerClient(registration(), '198.51.100.1'));
+    expect(err.errorCode).to.equal('too_many_requests');
+    expect(err.message).to.equal(
+      `This hub already has ${MAX_REGISTERED_CLIENTS} registered agents, each signed in or ` +
+        'registered in the last 10 minutes. Try again later.',
+    );
+    expect(await prisma.mcpClient.findUnique({ where: { id: `seeded-${last}` } })).to.not.equal(
+      null,
+    );
+
+    // Eleven minutes on it may go, as the longest-unused client without a sign-in.
+    const clock = sinon.useFakeTimers({ now: now + 6 * 60_000, toFake: ['Date'] });
+    const info = await store.registerClient(registration(), '198.51.100.2');
+    clock.restore();
+    expect(info.client_id).to.be.a('string');
+    expect(await prisma.mcpClient.findUnique({ where: { id: `seeded-${last}` } })).to.equal(null);
+    await prisma.mcpGrant.deleteMany({});
+  });
+
   it('forgets a client unused for 30 days, and keeps one in use', async () => {
     const clock = sinon.useFakeTimers({ now: Date.now(), toFake: ['Date'] });
     const used = await store.registerClient(registration());
@@ -276,6 +319,49 @@ describe('the sign-in client store', () => {
       expect(client).to.not.have.property('client_secret');
       expect(await store.nameOf(url)).to.equal('Doc Agent');
       expect(await prisma.mcpClient.count()).to.equal(0);
+    });
+
+    describe('with XENON_MCP_CLIENT_DOCUMENTS=off', () => {
+      let saved: string | undefined;
+      beforeEach(() => {
+        saved = process.env.XENON_MCP_CLIENT_DOCUMENTS;
+        process.env.XENON_MCP_CLIENT_DOCUMENTS = 'off';
+      });
+      afterEach(() => {
+        if (saved === undefined) delete process.env.XENON_MCP_CLIENT_DOCUMENTS;
+        else process.env.XENON_MCP_CLIENT_DOCUMENTS = saved;
+      });
+
+      it('is refused as invalid_client without fetching the document', async () => {
+        const fetch = sinon.stub().resolves({
+          client_id: url,
+          client_name: 'Doc Agent',
+          redirect_uris: ['http://127.0.0.1:5000/cb'],
+        });
+        store.fetchDocument = fetch;
+        const err = await oauthError(store.getClient(url) as Promise<unknown>);
+        expect(err).to.be.instanceOf(InvalidClientError);
+        expect(err.message).to.equal(
+          "This hub doesn't read client_id documents. Register the agent with the hub instead.",
+        );
+        // Named by its URL's host, still without a fetch.
+        expect(await store.nameOf(url)).to.equal('agent.example');
+        expect(fetch.called).to.equal(false);
+      });
+
+      it('still registers agents', async () => {
+        const info = await store.registerClient(registration());
+        expect((await store.getClient(info.client_id))?.client_name).to.equal('Claude Code');
+      });
+
+      it('takes any other value as on', async () => {
+        process.env.XENON_MCP_CLIENT_DOCUMENTS = 'on';
+        store.fetchDocument = sinon.stub().resolves({
+          client_id: url,
+          redirect_uris: ['http://127.0.0.1:5000/cb'],
+        });
+        expect((await store.getClient(url))?.client_id).to.equal(url);
+      });
     });
 
     it('is refused as invalid_client when the document is refused', async () => {

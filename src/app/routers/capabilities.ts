@@ -117,7 +117,9 @@ export function buildCapabilities(req?: Request) {
             mcpServer: {
               path: MCP_PATH,
               ...(req ? { url: mcpResourceUrl(req) } : {}),
-              oauth: true,
+              // Browser sign-in for agents: none with auth disabled, where
+              // the tools need no credential and the sign-in routes 404.
+              oauth: config.authDisabled !== true,
               contractVersion: 1,
               tools: toolNames(),
             },

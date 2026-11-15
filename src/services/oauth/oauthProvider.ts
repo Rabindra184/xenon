@@ -43,17 +43,22 @@ type Role = 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER';
  * role allows (scopesForRole), anything else dropped; the default set
  * (DEFAULT_MCP_SCOPES) when none were asked for. `invalid_scope` when some
  * were asked for and none can be granted.
+ *
+ * Never `admin` (`neverAdmin`): an agent asks for every scope the hub lists,
+ * so an admin's agent would otherwise get REST's admin routes without the
+ * consent page saying so. Team visibility still follows the role, which is
+ * looked up at every request.
  */
 export function grantForRole(role: string, requested: string[]): McpGrant {
   const flat = scopesForRole(role as Role);
   const asked = requested.filter(Boolean);
-  if (asked.length === 0) return resolveMcpGrant(flat);
+  if (asked.length === 0) return resolveMcpGrant(flat, undefined, { neverAdmin: true });
   const allowed = mcpScopesAllowedBy(flat);
   const kept = [...new Set(asked.filter((s) => allowed.has(s)))];
   if (kept.length === 0) {
     throw new InvalidScopeError('None of the scopes asked for can be granted to this user');
   }
-  return resolveMcpGrant(flat, kept);
+  return resolveMcpGrant(flat, kept, { neverAdmin: true });
 }
 
 /** A resource URL as compared: no fragment, no trailing slash. */

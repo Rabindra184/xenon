@@ -184,10 +184,10 @@ describe('agent sign-in (OAuth) end to end', () => {
   }
 
   /** Registration, authorize, consent and the code exchange: the agent ends up holding tokens. */
-  async function signIn(agent = new SpecAgent()): Promise<SpecAgent> {
+  async function signIn(agent = new SpecAgent(), cookie = member.cookie): Promise<SpecAgent> {
     expect(await agentAuth(agent)).to.equal('REDIRECT');
-    const requestId = await authorizeAsUser(agent.authUrl!);
-    const allowed = await consent(requestId, true);
+    const requestId = await authorizeAsUser(agent.authUrl!, cookie);
+    const allowed = await consent(requestId, true, cookie);
     expect(allowed.status, JSON.stringify(allowed.body)).to.equal(200);
     const back = new URL(allowed.body.redirectTo);
     expect(back.searchParams.get('state')).to.equal('spec-state');
@@ -226,6 +226,44 @@ describe('agent sign-in (OAuth) end to end', () => {
     } finally {
       await client.close();
     }
+  });
+
+  it("an admin's agent gets the admin's teams and phones, never the admin scope", async () => {
+    const admin = await seedUser('ADMIN', { name: 'Lab Admin' });
+    const other = await seedUser('MEMBER', { name: 'Someone Else' });
+    const agent = await signIn(new SpecAgent(), admin.cookie);
+    const bearer = `Bearer ${agent.saved!.access_token}`;
+    const claims = JSON.parse(
+      Buffer.from(agent.saved!.access_token.split('.')[1], 'base64url').toString(),
+    );
+    // The agent asked for every scope, as the SDK's client does.
+    expect(String(claims.scope).split(' ')).to.include('xenon:execute');
+    expect(String(claims.scopes).split(',')).to.not.include('admin');
+    expect(claims.roles).to.deep.equal([]);
+
+    // No admin route: managing accounts, or another user's agents.
+    const patch = await request(origin)
+      .patch(`/xenon/api/users/${other.user.id}`)
+      .set('authorization', bearer)
+      .send({ role: 'ADMIN' });
+    expect(patch.status, JSON.stringify(patch.body)).to.equal(403);
+    expect(patch.body).to.deep.equal({ error: 'insufficient scope' });
+    const bulk = await request(origin)
+      .delete(`/xenon/api/oauth/grants?userId=${other.user.id}`)
+      .set('authorization', bearer);
+    expect(bulk.status).to.equal(403);
+    expect(bulk.body).to.deep.equal({ error: 'insufficient scope' });
+    // The admin, signed in to the dashboard, may.
+    const asAdmin = await request(origin)
+      .get('/xenon/api/users')
+      .set('cookie', admin.cookie)
+      .set('origin', origin);
+    expect(asAdmin.status).to.equal(200);
+
+    // What the agent may do still follows the admin's role: every team's phones.
+    const me = await request(origin).get('/xenon/api/auth/me').set('authorization', bearer);
+    expect(me.status, JSON.stringify(me.body)).to.equal(200);
+    expect(me.body.role).to.equal('ADMIN');
   });
 
   it('the consent request names the agent, the hub and the scopes', async () => {
@@ -280,6 +318,24 @@ describe('agent sign-in (OAuth) end to end', () => {
       const doc = OAuthProtectedResourceMetadataSchema.parse(prm.body);
       expect(doc.resource).to.equal('http://lab-mac:4723/xenon/mcp');
       expect(doc.authorization_servers).to.deep.equal(['http://lab-mac:4723']);
+    }
+  });
+
+  it('XENON_MCP_CLIENT_DOCUMENTS=off stops offering client_id documents; agents still register and sign in', async () => {
+    const saved = process.env.XENON_MCP_CLIENT_DOCUMENTS;
+    try {
+      const on = await request(origin).get('/.well-known/oauth-authorization-server');
+      expect(on.body.client_id_metadata_document_supported).to.equal(true);
+
+      process.env.XENON_MCP_CLIENT_DOCUMENTS = 'off';
+      const off = await request(origin).get('/.well-known/oauth-authorization-server');
+      expect(off.status).to.equal(200);
+      expect(off.body.client_id_metadata_document_supported).to.equal(false);
+      const agent = await signIn();
+      expect(agent.saved?.access_token).to.be.a('string');
+    } finally {
+      if (saved === undefined) delete process.env.XENON_MCP_CLIENT_DOCUMENTS;
+      else process.env.XENON_MCP_CLIENT_DOCUMENTS = saved;
     }
   });
 

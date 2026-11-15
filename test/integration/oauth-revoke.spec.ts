@@ -349,8 +349,24 @@ describe("revoking an agent's sign-in", function () {
 
   it("a grant's token can't make credentials that would outlive it: 403", async () => {
     const asMember = bearer((await signIn(member)).token);
-    // An admin's full grant carries the admin scope, so the admin routes reach the check.
-    const asAdmin = bearer((await signIn(admin, ALL_GRANULAR_SCOPES)).token);
+    // A browser sign-in never carries the admin scope, so an admin's agent is
+    // refused the admin routes by their scope guard first (`insufficient
+    // scope`). This check stands behind that: a grant's token that somehow
+    // had `admin` is refused too. Signed here with the real grant's gid.
+    const adminSignIn = (await signIn(admin, ALL_GRANULAR_SCOPES)).token;
+    const { gid } = await keys.verify(adminSignIn, { audience: 'xenon-mcp' });
+    const asAdmin = bearer(
+      await keys.sign(
+        { sub: admin.user.id, role: 'ADMIN', scopes: 'admin,devices,sessions', gid },
+        { audience: 'xenon-mcp', ttlSeconds: 600 },
+      ),
+    );
+    const asAdminAgent = bearer(adminSignIn);
+    for (const path of ['/xenon/api/apikeys', '/xenon/api/users']) {
+      const refused = await request(origin).post(path).set(asAdminAgent).send({});
+      expect(refused.status, path).to.equal(403);
+      expect(refused.body.error, path).to.equal('insufficient scope');
+    }
     const calls: Array<[string, () => request.Test]> = [
       [
         'POST /auth/token (xenon-rest)',

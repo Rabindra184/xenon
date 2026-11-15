@@ -15,7 +15,7 @@ import { prisma } from '../../src/prisma';
 import { JwtKeyService } from '../../src/services/token/JwtKeyService';
 import { verifyBearerCredential } from '../../src/middleware/verifyCredential';
 import { AuthCodes, AUTH_CODE_TTL_MS } from '../../src/services/oauth/authCodes';
-import { GrantStore, SPENT_REFRESH_TOKEN_MEMORY_MS } from '../../src/services/oauth/grantStore';
+import { GrantStore } from '../../src/services/oauth/grantStore';
 import { ClientStore } from '../../src/services/oauth/clientStore';
 import { XenonOAuthProvider } from '../../src/services/oauth/oauthProvider';
 
@@ -334,10 +334,23 @@ describe('sign-in codes and grants', () => {
       expect(asMember.roles).to.deep.equal([]);
       expect(String(asMember.scopes).split(',')).to.not.include('admin');
 
+      // An admin's agent asks for every scope, as the SDK's client does, and
+      // still gets no `admin`: a browser sign-in never makes an admin token.
       const adminTokens = await signIn({ userId: admin.user.id, scopes: all });
       const asAdmin = await claimsOf(adminTokens.access_token);
-      expect(asAdmin.roles).to.deep.equal(['admin']);
-      expect(String(asAdmin.scopes).split(',')).to.include('admin');
+      expect(asAdmin.roles).to.deep.equal([]);
+      expect(String(asAdmin.scopes).split(',')).to.deep.equal(['devices', 'sessions']);
+      expect(asAdmin.scope).to.equal(all.join(' '));
+      expect(asAdmin.role).to.equal('ADMIN');
+
+      // So is a super admin's.
+      await prisma.user.update({ where: { id: admin.user.id }, data: { role: 'SUPER_ADMIN' } });
+      const asSuper = await claimsOf(
+        (await signIn({ userId: admin.user.id, scopes: all })).access_token,
+      );
+      expect(asSuper.roles).to.deep.equal([]);
+      expect(String(asSuper.scopes).split(',')).to.deep.equal(['devices', 'sessions']);
+      await prisma.user.update({ where: { id: admin.user.id }, data: { role: 'ADMIN' } });
 
       // Demoted since: the next refresh carries a member's power only.
       await prisma.user.update({ where: { id: admin.user.id }, data: { role: 'MEMBER' } });
@@ -632,16 +645,19 @@ describe('sign-in codes and grants', () => {
   });
 
   describe('spent refresh tokens', () => {
-    it('are remembered for 7 days: a reuse inside them revokes the grant', async () => {
+    it('are remembered as long as they could have worked: a reuse 29 days on revokes the grant', async () => {
       const clock = sinon.useFakeTimers({ now: Date.now(), toFake: ['Date'] });
       const first = await signIn();
       const second = await provider.exchangeRefreshToken(client, first.refresh_token!);
-      clock.tick(SPENT_REFRESH_TOKEN_MEMORY_MS - 60_000);
+      // Unused, `first` would have worked until the idle window (30 days) ran
+      // out, so a copy of it presented any time before then is a stolen one.
+      clock.tick(30 * DAY - 60_000);
       expect(await grants.rotate(first.refresh_token!)).to.equal('reused');
       expect(await grants.rotate(second.refresh_token!)).to.equal('invalid');
     });
 
-    it('are forgotten after 7 days, by a hub that only refreshes', async () => {
+    it('follow XENON_MCP_REFRESH_IDLE_DAYS, and are forgotten after it by a hub that only refreshes', async () => {
+      process.env.XENON_MCP_REFRESH_IDLE_DAYS = '2';
       const clock = sinon.useFakeTimers({ now: Date.now(), toFake: ['Date'] });
       const revokedOne = await signIn();
       const gone = String((await claimsOf(revokedOne.access_token)).gid);
@@ -651,15 +667,19 @@ describe('sign-in codes and grants', () => {
       const second = await provider.exchangeRefreshToken(client, first.refresh_token!);
       expect(await prisma.mcpGrant.count({ where: { rotatedFromId: gid } })).to.equal(1);
 
-      clock.tick(SPENT_REFRESH_TOKEN_MEMORY_MS + 60_000);
-      // No new sign-in: only this refresh runs, and it prunes.
+      // Refreshed inside each idle window; the first spent token is past it.
+      clock.tick(1.5 * DAY);
       const third = await provider.exchangeRefreshToken(client, second.refresh_token!);
-      expect(await prisma.mcpGrant.count({ where: { rotatedFromId: gid } })).to.equal(1);
+      clock.tick(DAY + 2 * 60 * 60_000);
+      // No new sign-in: only this refresh runs, and it prunes.
+      const fourth = await provider.exchangeRefreshToken(client, third.refresh_token!);
+      // `second` and `third` are still remembered; `first` is gone.
+      expect(await prisma.mcpGrant.count({ where: { rotatedFromId: gid } })).to.equal(2);
       expect(await prisma.mcpGrant.findUnique({ where: { id: gone } })).to.equal(null);
       // The forgotten token is simply invalid; the sign-in goes on.
       expect(await grants.rotate(first.refresh_token!)).to.equal('invalid');
       expect((await grants.find(gid))?.revokedAt).to.equal(null);
-      expect(await grants.rotate(third.refresh_token!)).to.be.an('object');
+      expect(await grants.rotate(fourth.refresh_token!)).to.be.an('object');
     });
   });
 

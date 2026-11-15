@@ -68,8 +68,24 @@ export interface McpGrant {
   granular: string[];
   /** Down-mapped flat scopes for the JWT `scopes` claim (comma-joined by the caller). */
   flat: string[];
-  /** `['admin']` only for an admin key granted the FULL granular set. */
+  /**
+   * `['admin']` only for an admin key granted the FULL granular set, and
+   * never for a browser sign-in (`neverAdmin`).
+   */
   roles: string[];
+}
+
+export interface McpGrantOptions {
+  /**
+   * An agent's browser sign-in (the OAuth provider's grantForRole): never
+   * flat `admin` or `roles: ['admin']`, even for an admin granted every MCP
+   * scope. An agent asks for every scope the hub lists (the SDK's client
+   * does), and the consent page doesn't say "and admin", so an admin's agent
+   * gets what a Member's does plus the role's team visibility, never REST's
+   * admin routes or an override of another user's session. POST /auth/token
+   * keeps the full-admin rule: its caller asks for exactly what it names.
+   */
+  neverAdmin?: boolean;
 }
 
 function flatScopesOf(flatScopesCsv: string): Set<FlatScope> {
@@ -95,7 +111,11 @@ export function mcpScopesAllowedBy(flatScopesCsv: string): Set<string> {
   );
 }
 
-export function resolveMcpGrant(flatScopesCsv: string, requested?: string[]): McpGrant {
+export function resolveMcpGrant(
+  flatScopesCsv: string,
+  requested?: string[],
+  opts: McpGrantOptions = {},
+): McpGrant {
   const isAdminKey = flatScopesOf(flatScopesCsv).has('admin');
   const ceiling = mcpScopesAllowedBy(flatScopesCsv);
 
@@ -123,7 +143,8 @@ export function resolveMcpGrant(flatScopesCsv: string, requested?: string[]): Mc
     }
   }
 
-  const fullAdmin = isAdminKey && ALL_GRANULAR_SCOPES.every((s) => granular.includes(s));
+  const fullAdmin =
+    !opts.neverAdmin && isAdminKey && ALL_GRANULAR_SCOPES.every((s) => granular.includes(s));
   const flat = [
     ...new Set(
       granular.map((s) => GRANULAR_TO_FLAT[s]).filter((f): f is FlatScope => f !== undefined),

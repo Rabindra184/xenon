@@ -25,8 +25,9 @@ import type { McpCaller } from '../mcp/mcpCredential';
  * can't be read is `unreadable`, and refused like a pair that doesn't verify.
  * A Basic header whose user is `xenon-session` carries a `xenon-session`
  * token as its password (what xenon_session_capabilities puts in the URL it
- * gives an agent): checked as session create checks one, and judged as a
- * Bearer token is. All of them are verified by the helpers
+ * gives an agent): checked as session create checks one, and judged by the
+ * session-token rule (checkSessionToken: it needs `sessions`, and overrides
+ * by canOverrideLease's session-token rule). All of them are verified by the helpers
  * authMiddleware uses, so an inactive user, a revoked or expired key, and a
  * bad or expired token are refused here exactly as they are on /xenon/api.
  *
@@ -46,7 +47,9 @@ export interface CommandCaller {
   /**
    * May drive a session they do not own: a SUPER_ADMIN, or a credential
    * carrying the `admin` scope. The rule is canOverrideLease's (and
-   * resolveActor's); an ADMIN's ordinary key is not an override.
+   * resolveActor's); an ADMIN's ordinary key is not an override. Never an
+   * agent's browser sign-in (a token with a `gid`, grant-bound below),
+   * whatever its user's role: it acts for its user on their own sessions.
    */
   overrideAdmin: boolean;
 }
@@ -86,12 +89,19 @@ export function commandCallerOf(mcp: McpCaller): CommandCaller {
   const { auth } = mcp;
   return {
     userId: auth.userId,
-    overrideAdmin: canOverrideLease({
-      kind: 'api-key',
-      scopes: auth.scopes ?? '',
-      user: { role: auth.role },
-    }),
+    overrideAdmin:
+      !grantBound(mcp.grantId) &&
+      canOverrideLease({
+        kind: 'api-key',
+        scopes: auth.scopes ?? '',
+        user: { role: auth.role },
+      }),
   };
+}
+
+/** Whether a credential came from an agent's browser sign-in: never an override admin. */
+function grantBound(grantId: string | undefined): boolean {
+  return typeof grantId === 'string' && grantId !== '';
 }
 
 /**
@@ -225,17 +235,20 @@ export class CommandCallerVerifier {
     // (/auth/token), so it is judged like a key. Judging it by role alone
     // would let an ADMIN's ordinary key mint its way to an override, as a
     // xenon-session token's lease override did through 2.14.
+    const grantId = grantIdOf(out.payload);
     return {
       caller: {
         userId: out.user.id,
-        overrideAdmin: canOverrideLease({
-          kind: 'api-key',
-          scopes: String(out.payload.scopes ?? ''),
-          user: out.user,
-        }),
+        overrideAdmin:
+          !grantBound(grantId) &&
+          canOverrideLease({
+            kind: 'api-key',
+            scopes: String(out.payload.scopes ?? ''),
+            user: out.user,
+          }),
       },
       credentialExpiresAt: typeof out.payload.exp === 'number' ? out.payload.exp * 1000 : undefined,
-      grantId: grantIdOf(out.payload),
+      grantId,
     };
   }
 
@@ -257,17 +270,20 @@ export class CommandCallerVerifier {
       throw err;
     }
     if (!sessionTokenGrantsSessions(out.payload.scopes)) return null;
+    const grantId = grantIdOf(out.payload);
     return {
       caller: {
         userId: out.user.id,
-        overrideAdmin: canOverrideLease({
-          kind: 'session-token',
-          scopes: String(out.payload.scopes ?? ''),
-          user: out.user,
-        }),
+        overrideAdmin:
+          !grantBound(grantId) &&
+          canOverrideLease({
+            kind: 'session-token',
+            scopes: String(out.payload.scopes ?? ''),
+            user: out.user,
+          }),
       },
       credentialExpiresAt: typeof out.payload.exp === 'number' ? out.payload.exp * 1000 : undefined,
-      grantId: grantIdOf(out.payload),
+      grantId,
     };
   }
 

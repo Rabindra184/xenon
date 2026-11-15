@@ -9,7 +9,8 @@ import type { McpGrant } from './mcpScopes';
  * - `scope`: the granular MCP scopes, space-separated.
  * - `scopes`: the flat scopes they down-map to (comma-separated), so the
  *   token's REST power matches its MCP grant.
- * - `roles`: `['admin']` only for an admin granted every MCP scope.
+ * - `roles`: `['admin']` only for an admin credential granted every MCP
+ *   scope by POST /auth/token; never for a browser sign-in.
  * - `gid`: the sign-in grant it was issued under, when there is one. A token
  *   POST /auth/token mints has none.
  *

@@ -64,6 +64,15 @@ describe('mcpScopes.resolveMcpGrant', () => {
     expect(g.flat).to.include('admin');
   });
 
+  it('a browser sign-in (neverAdmin) granted the FULL set gets no admin role and no flat admin', () => {
+    const g = resolveMcpGrant('admin,devices,sessions,read,apps', [...ALL_GRANULAR_SCOPES], {
+      neverAdmin: true,
+    });
+    expect(g.granular.sort()).to.deep.equal([...ALL_GRANULAR_SCOPES].sort());
+    expect(g.roles).to.deep.equal([]);
+    expect(g.flat).to.deep.equal(['devices', 'sessions']);
+  });
+
   it('admin key with the DEFAULT (narrowed) grant does NOT get the admin role', () => {
     // least-privilege: gateway admin bypass only when full power was explicitly requested
     const g = resolveMcpGrant('admin');

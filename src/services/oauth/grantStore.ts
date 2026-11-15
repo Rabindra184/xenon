@@ -9,12 +9,6 @@ export const DEFAULT_REFRESH_IDLE_DAYS = 30;
 export const DEFAULT_REFRESH_MAX_DAYS = 90;
 /** A revoked grant's rows are kept this long, then deleted. */
 const REVOKED_KEPT_MS = DAY_MS;
-/**
- * How long a spent refresh token is remembered: presented again within it,
- * it revokes its grant; after it, it is simply unknown. Bounds the rows a
- * long sign-in keeps (a week of hourly refreshes is about 170).
- */
-export const SPENT_REFRESH_TOKEN_MEMORY_MS = 7 * DAY_MS;
 /** How often a store prunes dead grants, at most. */
 const PRUNE_EVERY_MS = 60 * 60 * 1000;
 
@@ -44,6 +38,17 @@ export function refreshIdleMs(): number {
 /** A sign-in ends this long after it began, however often it refreshed: XENON_MCP_REFRESH_MAX_DAYS, 90 days. */
 export function refreshMaxMs(): number {
   return daysFrom('XENON_MCP_REFRESH_MAX_DAYS', DEFAULT_REFRESH_MAX_DAYS) * DAY_MS;
+}
+
+/**
+ * How long a spent refresh token is remembered: the idle window
+ * (refreshIdleMs), as long as the token could still have worked had it not
+ * been exchanged. Presented again within it, it revokes its grant; after it,
+ * it would have been refused anyway and is simply unknown. A sign-in that
+ * refreshes hourly keeps about 720 such rows at the default 30 days.
+ */
+export function spentRefreshTokenMemoryMs(): number {
+  return refreshIdleMs();
 }
 
 /** The stored form of a refresh token: its SHA-256, hex. */
@@ -116,8 +121,8 @@ function summary(row: GrantRow): GrantSummary {
  *   the old hash, with `rotatedFromId` naming the grant.
  * - A token that matches a spent row was presented a second time: the whole
  *   grant is revoked, every row with it (RFC 9700 §4.14.2).
- *   Spent rows are kept SPENT_REFRESH_TOKEN_MEMORY_MS (7 days); an older one
- *   is unknown. `prune` runs from `create` and `rotate`, at most hourly.
+ *   Spent rows are kept for the idle window (spentRefreshTokenMemoryMs, 30
+ *   days), as long as the token could have worked; an older one is unknown. `prune` runs from `create` and `rotate`, at most hourly.
  * - A grant ends 30 days after its last refresh or 90 days after it began
  *   (XENON_MCP_REFRESH_IDLE_DAYS, XENON_MCP_REFRESH_MAX_DAYS, read each time).
  *
@@ -171,7 +176,7 @@ export class GrantStore {
     })) as GrantRow | null;
     if (!row) return 'invalid';
     if (row.rotatedFromId) {
-      if (Date.now() - row.createdAt.getTime() >= SPENT_REFRESH_TOKEN_MEMORY_MS) return 'invalid';
+      if (Date.now() - row.createdAt.getTime() >= spentRefreshTokenMemoryMs()) return 'invalid';
       await this.revoke(row.rotatedFromId, 'refresh_token_reused');
       return 'reused';
     }
@@ -319,7 +324,7 @@ export class GrantStore {
   }
 
   /**
-   * Delete spent tokens older than SPENT_REFRESH_TOKEN_MEMORY_MS, and grants
+   * Delete spent tokens older than the idle window (spentRefreshTokenMemoryMs), and grants
    * past their limits or revoked a day ago, with their spent rows.
    */
   async prune(): Promise<number> {
@@ -327,7 +332,7 @@ export class GrantStore {
     const spent = await prisma.mcpGrant.deleteMany({
       where: {
         rotatedFromId: { not: null },
-        createdAt: { lt: new Date(now - SPENT_REFRESH_TOKEN_MEMORY_MS) },
+        createdAt: { lt: new Date(now - spentRefreshTokenMemoryMs()) },
       },
     });
     const dead = await prisma.mcpGrant.findMany({

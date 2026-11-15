@@ -37,7 +37,11 @@ import { UNKNOWN_SESSION_BODY } from '../../src/middleware/commandAuth';
 import type { McpCaller } from '../../src/mcp/mcpCredential';
 import { prisma } from '../../src/prisma';
 import { issueToken } from '../../src/app/routers/auth';
-import { McpScopeError } from '../../src/services/token/mcpScopes';
+import { ALL_GRANULAR_SCOPES, McpScopeError } from '../../src/services/token/mcpScopes';
+import { grantForRole } from '../../src/services/oauth/oauthProvider';
+import { GrantStore } from '../../src/services/oauth/grantStore';
+import { mcpTokenClaims } from '../../src/services/token/mcpTokenClaims';
+import { mcpTokenTtlSec } from '../../src/services/token/mcpTokenTtl';
 import { ApiKeyService } from '../../src/services/ApiKeyService';
 import { config } from '../../src/config';
 import { DefaultPluginArgs } from '../../src/interfaces/IPluginArgs';
@@ -237,6 +241,53 @@ describe('MCP session capabilities and recording tools (integration)', function 
     const claims = await keys.verify(token, { audience: 'xenon-session' });
     expect(claims.sub).to.equal(member.user.id);
     expect(claims.scopes).to.equal('sessions');
+    expect(answer.expiresAt).to.equal(claims.exp! * 1000);
+  });
+
+  it("under a browser sign-in the session token lasts XENON_MCP_TOKEN_TTL_SEC, not the access token's hour", async () => {
+    const { grantId } = await Container.get(GrantStore).create(member.user.id, 'spec-agent', [
+      'appium:use',
+    ]);
+    // The access token an agent's sign-in gives: an hour, with the grant's gid.
+    const access = await keys.sign(
+      mcpTokenClaims(
+        { userId: member.user.id, role: 'MEMBER' },
+        grantForRole('MEMBER', ['appium:use']),
+        { grantId },
+      ),
+      { audience: 'xenon-mcp', ttlSeconds: 3600 },
+    );
+    const { result } = await callTool(access, 'xenon_session_capabilities');
+    expect(result.isError, result.content[0].text).to.not.equal(true);
+    const answer = answerOf(result);
+    const claims = await keys.verify(answer.capabilities.alwaysMatch['xe:options'].sessionToken, {
+      audience: 'xenon-session',
+    });
+    // Revoked with its grant at once, so it needn't end with the access token.
+    expect(claims.gid).to.equal(grantId);
+    expect(claims.exp! - claims.iat!).to.equal(mcpTokenTtlSec());
+    expect(answer.expiresAt).to.equal(claims.exp! * 1000);
+  });
+
+  it("for any other caller the session token ends no later than the caller's own credential", async () => {
+    const access = await keys.sign(
+      mcpTokenClaims(
+        { userId: member.user.id, role: 'MEMBER' },
+        grantForRole('MEMBER', ['appium:use']),
+      ),
+      { audience: 'xenon-mcp', ttlSeconds: 600 },
+    );
+    const accessExp = (await keys.verify(access, { audience: 'xenon-mcp' })).exp!;
+    const { result } = await callTool(access, 'xenon_session_capabilities');
+    expect(result.isError, result.content[0].text).to.not.equal(true);
+    const answer = answerOf(result);
+    const claims = await keys.verify(answer.capabilities.alwaysMatch['xe:options'].sessionToken, {
+      audience: 'xenon-session',
+    });
+    expect(claims.gid).to.equal(undefined);
+    expect(claims.exp!).to.be.at.most(accessExp);
+    expect(claims.exp! - claims.iat!).to.be.below(mcpTokenTtlSec());
+    expect(answer.expiresAt).to.equal(claims.exp! * 1000);
   });
 
   it('with a lease it adds leaseId, leaseToken and leaseMember', async () => {
@@ -444,6 +495,41 @@ describe('MCP xenon_execute_script (integration)', function () {
     });
   });
 
+  it("an admin's agent, signed in through the browser, can't run it on another user's session", async () => {
+    const sessionId = await nodeWithSession();
+    for (const role of ['ADMIN', 'SUPER_ADMIN'] as const) {
+      // What /xenon/mcp holds for such a token: the grant's scopes cut to the
+      // role (every MCP scope asked for, as the SDK's client does), and its gid.
+      const grant = grantForRole(role, [...ALL_GRANULAR_SCOPES]);
+      const agent: McpCaller = {
+        auth: {
+          kind: 'bearer',
+          userId: 'bob',
+          role,
+          scopes: grant.flat.join(','),
+          rateLimit: 300,
+          teamIds: undefined,
+          grantId: 'grant-of-bobs-agent',
+        },
+        grantId: 'grant-of-bobs-agent',
+        mcpScopes: grant.granular,
+      };
+      const result = await run(agent, { script: 'xe:getAutowaitProperties', sessionId });
+      expect(result.isError, role).to.equal(true);
+      expect(answerOf(result), role).to.deep.equal({
+        error: 'not_found',
+        message: `Session with id ${sessionId} not found`,
+      });
+      // Nor past the tool's own check: per-command auth refuses it too.
+      const direct = await invokeWebDriver(agent, sessionId, {
+        method: 'POST',
+        path: 'execute/sync',
+        body: { script: 'xe:getAutowaitProperties', args: [] },
+      });
+      expect(direct.status, role).to.equal(404);
+    }
+  });
+
   it("per-command auth takes the tool's caller as verified, and still requires the owner", async () => {
     const sessionId = await nodeWithSession();
     const body = { script: 'xe:getAutowaitProperties', args: [] };
@@ -468,6 +554,23 @@ describe('MCP xenon_execute_script (integration)', function () {
     const result = await run(caller('alice'), { script: 'mobile: shell', sessionId });
     expect(result.isError).to.equal(true);
     expect(answerOf(result).error).to.equal('bad_request');
+  });
+
+  it("xenon_execute_script runs only Xenon's own commands: an xe: label on JavaScript, or an unknown name, never reaches the driver", async () => {
+    // `xe: <js>` is a labelled statement in a webview, which the driver would run.
+    for (const script of ['xe: document.title', 'xe: alert(1)', 'xe:noSuchCommand', 'xenon:x y']) {
+      const result = await run(caller('alice'), { script, sessionId: 'no-such-session' });
+      expect(result.isError, script).to.equal(true);
+      const answer = answerOf(result);
+      // Refused before the session is looked up: not REST's not-found.
+      expect(answer.error, script).to.equal('bad_request');
+      expect(answer.message, script).to.include('xe:smartTap');
+    }
+    // Every documented name is let through to the session (here: unknown).
+    for (const script of ['xe:smartTap', 'xenon: getRequests', 'xe:addTag']) {
+      const result = await run(caller('alice'), { script, sessionId: 'no-such-session' });
+      expect(answerOf(result).error, script).to.equal('not_found');
+    }
   });
 
   it("xenon_execute_script on a node's session is forwarded and answers, in the hub's command log", async () => {

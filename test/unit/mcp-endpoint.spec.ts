@@ -227,6 +227,17 @@ describe('the MCP endpoint (/xenon/mcp)', () => {
   });
 
   it("takes a request from this server's own origin", async () => {
+    // Its own origin is the request's only while XENON_PUBLIC_URL is unset.
+    const savedPublicUrl = config.publicUrl;
+    config.publicUrl = undefined;
+    try {
+      await ownOriginIsTaken();
+    } finally {
+      config.publicUrl = savedPublicUrl;
+    }
+  });
+
+  async function ownOriginIsTaken() {
     const server: Server = await servers.serve(appFor());
     const { port } = server.address() as AddressInfo;
     const res = await request(`http://127.0.0.1:${port}`)
@@ -245,7 +256,7 @@ describe('the MCP endpoint (/xenon/mcp)', () => {
         },
       });
     expect(res.status).to.equal(200);
-  });
+  }
 
   it('answers GET with 405', async () => {
     const res = await request(appFor()).get('/xenon/mcp').set(keyPair);

@@ -392,6 +392,18 @@ async function fetchFresh(raw: string, url: URL, deps: MetadataFetchDeps): Promi
 const cache = new Map<string, { metadata: ClientMetadata; until: number }>();
 const inflight = new Map<string, Promise<ClientMetadata>>();
 
+/**
+ * Whether this hub reads client ID metadata documents: unless
+ * `XENON_MCP_CLIENT_DOCUMENTS` is `off` (read on every call). A lab on a
+ * closed network can't fetch an agent's document from the internet, so it
+ * turns them off: the authorization-server metadata then says so
+ * (`client_id_metadata_document_supported: false`), an agent registers
+ * instead, and a URL `client_id` is refused without a fetch.
+ */
+export function clientDocumentsAccepted(): boolean {
+  return (process.env.XENON_MCP_CLIENT_DOCUMENTS ?? '').trim().toLowerCase() !== 'off';
+}
+
 /** Forget every document kept. For specs. */
 export function clearClientMetadataCache(): void {
   cache.clear();
