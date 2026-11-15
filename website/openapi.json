@@ -2624,6 +2624,39 @@
               "appReuse": {
                 "type": "boolean",
                 "description": "An uploaded app a session names by id is handed to the driver\nof this server's own phones as the library's file, and a node\nkeeps each build it fetches from its hub, so a build is\ntransferred at most once per host, with sign-in on too.\n"
+              },
+              "mcpServer": {
+                "type": "object",
+                "description": "The tools for AI coding agents, over MCP. Present on a hub or a\nstandalone server, never on a node (its phones are reached\nthrough its hub). `path` is where the endpoint is; `url` is the\nendpoint as agents name it (`XENON_PUBLIC_URL`'s origin when\nset, else the request's). `oauth` says agents can sign in\nthrough the browser when auth is on. `contractVersion` changes\nwhen a tool's name or arguments do. `tools` names every tool;\na caller is shown only those its scopes allow.\n",
+                "required": [
+                  "path",
+                  "oauth",
+                  "contractVersion",
+                  "tools"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "example": "/xenon/mcp"
+                  },
+                  "url": {
+                    "type": "string",
+                    "example": "https://xenon.example.com/xenon/mcp"
+                  },
+                  "oauth": {
+                    "type": "boolean"
+                  },
+                  "contractVersion": {
+                    "type": "integer",
+                    "example": 1
+                  },
+                  "tools": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
               }
             }
           }
@@ -13408,7 +13441,7 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "An MCP scope the caller's credential can't grant (`scope_exceeds_key`), or the same-origin\ncheck failed.\n",
+            "description": "An MCP scope the caller's credential can't grant (`scope_exceeds_key`), the same-origin\ncheck failed, or the caller is an agent signed in through the browser\n(`agent_sign_in_cannot_make_credentials`): a token it made would outlive its sign-in.\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -13424,6 +13457,12 @@
                   "csrf": {
                     "value": {
                       "error": "CSRF: Origin or Referer header required"
+                    }
+                  },
+                  "agent": {
+                    "value": {
+                      "error": "agent_sign_in_cannot_make_credentials",
+                      "message": "An agent signed in through the browser cannot make keys, tokens or passwords; do this from the dashboard"
                     }
                   }
                 }
@@ -13496,14 +13535,24 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "A credential other than a dashboard sign-in, without the `admin` scope.",
+            "description": "A credential other than a dashboard sign-in, without the `admin` scope, or an agent signed\nin through the browser (`agent_sign_in_cannot_make_credentials`).\n",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 },
-                "example": {
-                  "error": "rotating the access key needs a dashboard sign-in or a credential with the admin scope"
+                "examples": {
+                  "credential": {
+                    "value": {
+                      "error": "rotating the access key needs a dashboard sign-in or a credential with the admin scope"
+                    }
+                  },
+                  "agent": {
+                    "value": {
+                      "error": "agent_sign_in_cannot_make_credentials",
+                      "message": "An agent signed in through the browser cannot make keys, tokens or passwords; do this from the dashboard"
+                    }
+                  }
                 }
               }
             }
@@ -13642,7 +13691,27 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "$ref": "#/components/responses/Forbidden"
+            "description": "The credential lacks the scope this needs, or the caller is an agent signed in through the\nbrowser (`agent_sign_in_cannot_make_credentials`): a token it made would outlive its sign-in.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "scope": {
+                    "value": {
+                      "error": "insufficient scope"
+                    }
+                  },
+                  "agent": {
+                    "value": {
+                      "error": "agent_sign_in_cannot_make_credentials",
+                      "message": "An agent signed in through the browser cannot make keys, tokens or passwords; do this from the dashboard"
+                    }
+                  }
+                }
+              }
+            }
           },
           "404": {
             "$ref": "#/components/responses/IdentityUserNotFound"
@@ -13820,14 +13889,24 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "Your role is below `ADMIN`, or you may not create an account with that role.",
+            "description": "Your role is below `ADMIN`, or you may not create an account with that role, or the caller\nis an agent signed in through the browser (`agent_sign_in_cannot_make_credentials`).\n",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 },
-                "example": {
-                  "error": "cannot create user with role ADMIN"
+                "examples": {
+                  "role": {
+                    "value": {
+                      "error": "cannot create user with role ADMIN"
+                    }
+                  },
+                  "agent": {
+                    "value": {
+                      "error": "agent_sign_in_cannot_make_credentials",
+                      "message": "An agent signed in through the browser cannot make keys, tokens or passwords; do this from the dashboard"
+                    }
+                  }
                 }
               }
             }
@@ -14052,14 +14131,24 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "Your role is below `ADMIN`, or too low for this account.",
+            "description": "Your role is below `ADMIN`, or too low for this account, or the caller is an agent signed in\nthrough the browser (`agent_sign_in_cannot_make_credentials`): a reset link is a way into\nanother account.\n",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 },
-                "example": {
-                  "error": "insufficient permissions for this target"
+                "examples": {
+                  "role": {
+                    "value": {
+                      "error": "insufficient permissions for this target"
+                    }
+                  },
+                  "agent": {
+                    "value": {
+                      "error": "agent_sign_in_cannot_make_credentials",
+                      "message": "An agent signed in through the browser cannot make keys, tokens or passwords; do this from the dashboard"
+                    }
+                  }
                 }
               }
             }
@@ -14576,7 +14665,27 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "$ref": "#/components/responses/Forbidden"
+            "description": "The credential lacks the `admin` scope, or the caller is an agent signed in through the\nbrowser (`agent_sign_in_cannot_make_credentials`): a key it made would outlive its sign-in.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "scope": {
+                    "value": {
+                      "error": "insufficient scope"
+                    }
+                  },
+                  "agent": {
+                    "value": {
+                      "error": "agent_sign_in_cannot_make_credentials",
+                      "message": "An agent signed in through the browser cannot make keys, tokens or passwords; do this from the dashboard"
+                    }
+                  }
+                }
+              }
+            }
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -14904,6 +15013,25 @@
                       },
                       "proxyShaped": [
                         "androidDevice"
+                      ]
+                    },
+                    "mcpServer": {
+                      "path": "/xenon/mcp",
+                      "url": "https://xenon.example.com/xenon/mcp",
+                      "oauth": true,
+                      "contractVersion": 1,
+                      "tools": [
+                        "xenon_lab_info",
+                        "xenon_list_devices",
+                        "xenon_acquire_device",
+                        "xenon_release_device",
+                        "xenon_extend_device",
+                        "xenon_selector_health",
+                        "xenon_healing_events",
+                        "xenon_start_recording",
+                        "xenon_stop_recording",
+                        "xenon_execute_script",
+                        "xenon_session_capabilities"
                       ]
                     }
                   }
@@ -15424,6 +15552,34 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "description": "A credential that names no user, such as a hub's token for its node.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "forbidden",
+                  "message": "Agent sign-ins belong to a user"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Auth is disabled on this server, so it signs no agent in and serves no such route.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": true,
+                  "message": "API endpoint GET /xenon/api/oauth/grants not found"
+                }
+              }
+            }
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           }
@@ -15488,7 +15644,41 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "$ref": "#/components/responses/Forbidden"
+            "description": "The caller isn't an admin holding the `admin` scope, or its credential names no user\n(`Agent sign-ins belong to a user`).\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "scope": {
+                    "value": {
+                      "error": "insufficient scope"
+                    }
+                  },
+                  "noUser": {
+                    "value": {
+                      "error": "forbidden",
+                      "message": "Agent sign-ins belong to a user"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Auth is disabled on this server, so it signs no agent in and serves no such route.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": true,
+                  "message": "API endpoint DELETE /xenon/api/oauth/grants?userId=4f8d2a1b-3c6e-4b7a-8d9f-0e1c2b3a4d5e not found"
+                }
+              }
+            }
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -15512,7 +15702,7 @@
       "delete": {
         "operationId": "revokeOAuthGrant",
         "summary": "Revoke a signed-in agent",
-        "description": "Signs the agent out at once: its access tokens are refused from the next request, on\n`/mcp`, the REST API and WebDriver commands alike, its refresh token stops working, and\nevery device lease it holds ends (`endReason` `grant_revoked`). The caller's own\nsign-in, or any user's for an admin whose credential carries the `admin` scope (as the\nbulk revoke asks). Another user's sign-in, an unknown one and one already revoked are\nthe same `404`.\n",
+        "description": "Signs the agent out at once: its access tokens are refused from the next request, on\n`/mcp`, the REST API and WebDriver commands alike, its refresh token stops working, and\nevery device lease it holds ends (`endReason` `grant_revoked`). The caller's own\nsign-in, or any user's for an admin whose credential carries the `admin` scope (as the\nbulk revoke asks). Another user's sign-in, an unknown one and one already revoked are\nthe same `404`, and so is every request with auth disabled, where nobody signs in.\n\nAny credential of the user may revoke their sign-ins, an agent's own access token\nincluded: an agent can sign out its user's other agents, or itself.\n\nAn Appium session the agent already started goes on: unless `XENON_REQUIRE_COMMAND_AUTH`\nis on, its commands are authorized by the session id. A recording it started keeps its\nphones until the user or an admin stops it.\n",
         "tags": [
           "Agent sign-in"
         ],
@@ -15523,8 +15713,22 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "description": "A credential that names no user, such as a hub's token for its node.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "forbidden",
+                  "message": "Agent sign-ins belong to a user"
+                }
+              }
+            }
+          },
           "404": {
-            "description": "No such sign-in of the caller's (or, for an admin, of anyone's).",
+            "description": "No such sign-in of the caller's (or, for an admin, of anyone's), or auth is disabled on\nthis server (the API's unknown-route answer: `error: true`, \"API endpoint DELETE ...\nnot found\").\n",
             "content": {
               "application/json": {
                 "schema": {

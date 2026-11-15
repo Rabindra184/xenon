@@ -47,6 +47,7 @@ Your tests keep their Appium client and their code: pointing them at Xenon is a 
 - [Capabilities for your tests](#capabilities-for-your-tests)
 - [Run tests against an uploaded app](#run-tests-against-an-uploaded-app)
 - [Clients, SDKs and the API](#clients-sdks-and-the-api)
+- [Use Xenon from your AI agent](#use-xenon-from-your-ai-agent)
 - [Self-healing](#self-healing)
 - [Security and access](#security-and-access)
 - [Observability](#observability)
@@ -433,6 +434,10 @@ curl -X POST -H "Content-Type: application/json" \
 ```
 
 Errors are JSON with an `error` field. Requests are rate limited per API key or per user; a limited answer carries `X-RateLimit-*` headers, and `429` with `Retry-After` past the budget.
+
+## Use Xenon from your AI agent
+
+The hub serves MCP at `/xenon/mcp`, so Claude Code, Codex, Cursor, VS Code, Gemini CLI and other coding agents can list, lease and record your lab's phones and start Appium sessions as you. Add it with your agent's own command, such as `claude mcp add --transport http xenon https://<your-hub>/xenon/mcp`; the agent signs in through your browser, and you sign it out on the dashboard's **AI agents** page. [AI agents](https://xenon-6e6.pages.dev/docs/ai-agents) has each agent's command, CI credentials, the scopes and every tool.
 
 ## Self-healing
 
