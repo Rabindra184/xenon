@@ -8,6 +8,135 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.37.0
+
+**Phones in use are no longer freed or handed to a second session when two things happen at once.**
+
+No database migration. Update with `appium plugin update xenon`. Upgrade a
+hub and its nodes: some of these fixes run on the node (a session Appium
+ends releases the node's own phone; unclaimed metrics stop). Nothing between
+them changed, so they can be upgraded in either order.
+
+These come from a review of the state Xenon keeps without an explicit model
+(#604–#633). Every fix has tests that fail on 2.36.0.
+
+### Changed — operator action may be needed
+
+- **Behind a reverse proxy, set `trustProxy`** (#627). The sign-in limit
+  used to key attempts on the client's own `X-Forwarded-For`, so a client
+  that changed it on each attempt was never limited. It now keys on the
+  caller's address (`req.ip`), and at most 10,000 callers are tracked.
+  Behind a proxy that is the proxy's address, so every sign-in through it
+  shares one limit, unless the new `trustProxy` option (or
+  `XENON_TRUST_PROXY`) says which proxies may name the caller: `true`, a hop
+  count such as `1`, or addresses, subnets and `loopback`, `linklocal`,
+  `uniquelocal`. Unset, no proxy is trusted. A value Express can't use is
+  ignored, with a warning.
+
+### Fixed — sessions and phones
+
+- **A running session's phone isn't freed** because the session isn't in
+  the dashboard's memory (#604). On a default server, a session with
+  `xe:record_video: false` lost its phone 60–120 s into the test. The
+  device reconciler and the health monitor now ask Appium too.
+- **A session Appium ends itself is ended once, on every server** (#605).
+  Its reason ("New Command Timeout ...") is no longer replaced about 3
+  minutes later by a second ending; a node releases its own phone; its video
+  is always stopped. A session's first ending stands.
+- **The idle clock counts commands in flight** (#607). A command longer than
+  `newCommandTimeout` (a heal reaching the AI tiers, a large install) no
+  longer frees the phone mid-command. After a lease, a preview or recording
+  hold is no longer released within about 30 s as idle.
+- **Holds are taken and released conditionally** (#607): a preview or
+  recording never writes over a session's pending claim, and its end never
+  frees a phone a session holds.
+- **A session gives back only its own ports** (#612). A session's end used
+  to delete every port row of its phone, a lease's and a preview's included,
+  so a later session failed with "Address already in use".
+- **A create that lost its claim is undone** (#612, #630), locally and on a
+  node, instead of leaving two sessions on one phone.
+- **Ports and video before the phone** (#627, #633): a test's delete and a
+  shutdown give back the session's ports and stop its video before the next
+  session can get the phone.
+- **The heartbeat runs one cycle at a time** and stamps every session first
+  (#622), so a slow node no longer gets healthy sessions on another node
+  failed as orphans.
+- **A node session that is gone ends at once** on the hub (#630), not after
+  about 3 minutes.
+- **Hub rows for node phones** (#624, #630): a stale "free" report can't undo
+  a forwarded preview's busy mark; a held row survives a missed probe; a row
+  whose node isn't answering isn't handed out; admin-blocked phones are
+  idled out; one health rule; a NULL `offline` no longer blocks allocation.
+
+### Fixed — streams and the dashboard
+
+- **iPhone streams** (#606, #620, #623): a restart keeps the viewer's hold, a
+  stop cancels a start still running (`stream/start` answers
+  `409 stream_stopped`), a failed start leaves no processes, the hourly
+  watchdog heals again, viewers are counted on the stream they joined, and
+  one phone never gets two go-ios tunnels.
+- **Android streams** (#610): a stop during a start leaves no capture
+  running, H.264 never starts beside a recording, and the MJPEG proxy opens
+  one upstream at a time.
+- **A start cancels a leave check already running** (#623), so a reload
+  just after the 3 s grace keeps its preview.
+- **The dashboard** (#608, #613, #626):
+  - An unreachable server shows "Can't reach the Xenon server" and retries,
+    instead of sending you to sign in.
+  - Live devices reads one recording phase, and a failed Stop keeps Stop.
+  - A tile never shows Live over a black canvas.
+  - A Logs recording skips the replayed lines after a reconnect.
+  - A refused live socket says "Live updates stopped", with Reload.
+- **Live sockets retry a handshake the server couldn't check** (#614)
+  instead of staying without live events until a reload.
+
+### Fixed — recordings
+
+- **A recording ends once** and keeps its phone until its row says so
+  (#609). A failed finalize is retried and written again later, instead of
+  leaving the phone "recording" until a restart. Two starts of one phone
+  can't both pass the busy check. `add-device` on a group that isn't
+  recording is `409 group_not_recording`.
+- **Phones added with add-device join the side-by-side video** in parts
+  (#631, #632). Part 1 stays `composite.mp4`, later parts are
+  `composite-<n>.mp4`, served with `?part=<n>` and in the zip and proof
+  bundle. Summaries gain `compositeParts` and `compositeEndedEarly`, and the
+  Recording page and Live devices say when it stopped early (#623).
+- **An observer recording's stream is handed back** when it ends (#631).
+
+### Fixed — leases, healing, network and identity
+
+- **Leases** (#615, #628): typed statuses, each end with its reason in
+  `endReason`; one liveness rule; the sweeper and `extend` write only what
+  they judged, so a heartbeat landing in between isn't undone; a waiter
+  that missed three heartbeats gets `410` and is never granted; host locks
+  are exact. Ended leases are deleted 30 days after they end.
+- **Selector Health** (#611, #619): status changes no longer undo one made
+  meanwhile, a regression is counted once, one verification run at a time,
+  and a heal at the moment of the fix isn't a regression. Muting a selector
+  being verified now clears its fix.
+- **Fingerprints are kept per platform** (#616, #628): a cross-platform
+  suite's iOS sessions no longer use an Android fingerprint, and a
+  fingerprint never mixes two elements. Old rows are still read.
+  `GET /healing/fingerprint` adds `platform` and `platforms`.
+- **OCR has a 30 s time limit** per read (#627), so one hung read can't hold
+  every OCR caller.
+- **Breakers and saved settings** (#614): the AI breaker lets one probe
+  through when half open; a saved "AI self-healing off" that can't be read
+  at boot keeps the AI tiers off and retries.
+- **Phone network** (#617, #629): a late `setNetworkProfile` can't leave a
+  phone offline; a capture or relay that fails part-way rolls back; the
+  ledger is versioned and keeps rows it can't read; `Normal` puts back what
+  it turned on; Offline is not applied over wireless adb (`notApplied`
+  says why); the capture's CA certificate is removed again.
+- **Identity** (#625): a password reset link works once and not for an
+  Inactive user; concurrent changes can't remove the last super-admin.
+
+### Tests
+
+- No spec runs this machine's real `adb` (#633); specs that failed under
+  load or alone are fixed (#618, #619, #621).
+
 ## 2.36.0
 
 **A lease can ask for the phone on one server.**
