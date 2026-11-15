@@ -28,7 +28,8 @@ import {
 } from '../../mcp/publicOrigin';
 import { XenonOAuthProvider, grantForRole } from '../../services/oauth/oauthProvider';
 import { ClientStore } from '../../services/oauth/clientStore';
-import { clientDocumentsAccepted } from '../../services/oauth/clientMetadataDocument';
+import { clientDocumentsOffered } from '../../services/oauth/clientMetadataDocument';
+import { readableErrorsForBrowsers } from './oauthErrorPage';
 import { AuthCodes } from '../../services/oauth/authCodes';
 import { PendingAuthorizations } from '../../services/oauth/pendingAuthorizations';
 import { RequestLimiter, callerAddress, requestLimiter } from '../../services/oauth/callerAddress';
@@ -301,7 +302,14 @@ export function registerOAuthRoutes(router: Router, pluginArgs: IPluginArgs): vo
 
   const authorizeRoute = express.Router();
   authorizeRoute.use(signInServed);
-  authorizeRoute.get('/', limiter(LIMITS.authorize), refuseBadAuthorizeRequests, authorize);
+  // A browser reads the authorize page's errors as a page, never JSON (oauthErrorPage.ts).
+  authorizeRoute.get(
+    '/',
+    readableErrorsForBrowsers,
+    limiter(LIMITS.authorize),
+    refuseBadAuthorizeRequests,
+    authorize,
+  );
   router.use('/authorize', authorizeRoute);
 
   const tokenRoute = express.Router();
@@ -572,7 +580,7 @@ export function authorizationServerMetadata(req: Request) {
     token_endpoint_auth_methods_supported: ['none'],
     revocation_endpoint_auth_methods_supported: ['none'],
     // XENON_MCP_CLIENT_DOCUMENTS=off on a lab that can't reach the internet.
-    client_id_metadata_document_supported: clientDocumentsAccepted(),
+    client_id_metadata_document_supported: clientDocumentsOffered(),
   };
 }
 

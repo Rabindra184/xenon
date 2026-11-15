@@ -15,6 +15,7 @@ import {
   ClientMetadataRefused,
   RefusalReason,
   clientDocumentsAccepted,
+  noteUnreachableClientDocument,
   fetchClientMetadataDocument,
 } from './clientMetadataDocument';
 import { GrantStore } from './grantStore';
@@ -67,6 +68,9 @@ const FORBIDDEN_SCHEMES = new Set([
 ]);
 
 const GRANT_TYPES = ['authorization_code', 'refresh_token'];
+
+/** What a sign-in is told when an agent's document can't be fetched for a network reason. */
+export const DOCUMENT_UNREACHABLE = 'The client_id document could not be fetched';
 
 /** Refusals that would say something about the hub's network, answered alike. */
 const NETWORK_REASONS = new Set<RefusalReason>([
@@ -350,9 +354,16 @@ export class ClientStore implements OAuthRegisteredClientsStore {
         this.log.info(
           `refused the client_id document ${JSON.stringify(url.slice(0, 300))}: ${err.reason} (${err.message})`,
         );
+        if (NETWORK_REASONS.has(err.reason) && noteUnreachableClientDocument()) {
+          this.log.warn(
+            "Couldn't fetch an agent's client_id document, so agents will register with the hub " +
+              'for an hour. On a network without internet access, set ' +
+              'XENON_MCP_CLIENT_DOCUMENTS=off to make this permanent.',
+          );
+        }
         throw new InvalidClientError(
           NETWORK_REASONS.has(err.reason)
-            ? 'The client_id document could not be fetched'
+            ? DOCUMENT_UNREACHABLE
             : `The client_id document was refused: ${err.message}`,
         );
       }

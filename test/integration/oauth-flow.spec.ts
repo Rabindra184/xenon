@@ -29,7 +29,11 @@ import { createRouter } from '../../src/app/index';
 import { oauthWellKnownRouter, resetOAuthRateLimits } from '../../src/app/routers/oauth';
 import { JwtKeyService } from '../../src/services/token/JwtKeyService';
 import { AuthCodes } from '../../src/services/oauth/authCodes';
-import { ClientStore } from '../../src/services/oauth/clientStore';
+import { ClientStore, DOCUMENT_UNREACHABLE } from '../../src/services/oauth/clientStore';
+import {
+  ClientMetadataRefused,
+  resetClientDocumentFallback,
+} from '../../src/services/oauth/clientMetadataDocument';
 import { PendingAuthorizations } from '../../src/services/oauth/pendingAuthorizations';
 import { config } from '../../src/config';
 import { DefaultPluginArgs } from '../../src/interfaces/IPluginArgs';
@@ -49,6 +53,8 @@ class SpecAgent implements OAuthClientProvider {
   saved?: OAuthTokens;
   verifier = '';
   authUrl?: URL;
+  /** An agent that names itself by a client ID metadata document, as Claude Code and Codex do. */
+  clientMetadataUrl?: string;
 
   constructor(readonly redirectUrl = 'http://127.0.0.1:47831/callback') {}
 
@@ -351,6 +357,68 @@ describe('agent sign-in (OAuth) end to end', () => {
     } finally {
       if (saved === undefined) delete process.env.XENON_MCP_CLIENT_DOCUMENTS;
       else process.env.XENON_MCP_CLIENT_DOCUMENTS = saved;
+    }
+  });
+
+  it('a client_id document that cannot be fetched turns documents off in the metadata for an hour', async () => {
+    const store = Container.get(ClientStore);
+    const fetchDocument = store.fetchDocument;
+    store.fetchDocument = sinon
+      .stub()
+      .rejects(new ClientMetadataRefused('unreachable', 'agent.example: connection refused'));
+    try {
+      const url = new URL(`${origin}/xenon/api/oauth/authorize`);
+      url.searchParams.set('response_type', 'code');
+      url.searchParams.set('client_id', 'https://agent.example/client.json');
+      url.searchParams.set('redirect_uri', 'http://127.0.0.1:5000/cb');
+      url.searchParams.set('code_challenge', 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
+      url.searchParams.set('code_challenge_method', 'S256');
+      url.searchParams.set('resource', `${origin}/xenon/mcp`);
+      const refused = await request(origin)
+        .get(url.pathname + url.search)
+        .set('x-forwarded-for', testAddress);
+      expect(refused.status).to.equal(400);
+      expect(refused.body.error_description).to.equal(DOCUMENT_UNREACHABLE);
+
+      const metadata = await request(origin).get('/.well-known/oauth-authorization-server');
+      expect(metadata.body.client_id_metadata_document_supported).to.equal(false);
+      const agent = await signIn();
+      expect(agent.saved?.access_token).to.be.a('string');
+    } finally {
+      store.fetchDocument = fetchDocument;
+      resetClientDocumentFallback();
+    }
+  });
+
+  it('an agent that keeps the client id it saved is refused again, and registers once signed out', async () => {
+    // The SDK client saves the URL client_id before the browser opens, and a
+    // retry goes back with it whatever discovery says (Claude Code does this;
+    // Codex reads discovery again). So the page tells such an agent to sign
+    // out of the hub first.
+    const store = Container.get(ClientStore);
+    const fetchDocument = store.fetchDocument;
+    store.fetchDocument = sinon.stub().rejects(new ClientMetadataRefused('unresolvable', 'x'));
+    const documentUrl = 'https://agent.example/client.json';
+    try {
+      const agent = new SpecAgent();
+      agent.clientMetadataUrl = documentUrl;
+      for (const attempt of ['first', 'retry']) {
+        expect(await agentAuth(agent), attempt).to.equal('REDIRECT');
+        expect(agent.authUrl!.searchParams.get('client_id'), attempt).to.equal(documentUrl);
+        const res = await request(origin)
+          .get(agent.authUrl!.pathname + agent.authUrl!.search)
+          .set('x-forwarded-for', testAddress);
+        expect(res.status, attempt).to.equal(400);
+        expect(res.body.error_description, attempt).to.equal(DOCUMENT_UNREACHABLE);
+      }
+      // Signed out: the agent forgets its client and reads discovery again.
+      agent.info = undefined;
+      await signIn(agent);
+      expect(agent.clientInformation()?.client_id).to.not.equal(documentUrl);
+      expect(agent.saved?.access_token).to.be.a('string');
+    } finally {
+      store.fetchDocument = fetchDocument;
+      resetClientDocumentFallback();
     }
   });
 
@@ -734,6 +802,46 @@ describe('agent sign-in (OAuth) end to end', () => {
         expect(res.status, what).to.equal(400);
         expect(res.headers.location, what).to.equal(undefined);
         expect(res.body.error, what).to.equal(error);
+      }
+    });
+
+    it('a browser gets a readable page for an error answered directly', async () => {
+      const agent = new SpecAgent('https://evil.example/cb');
+      await agentAuth(agent);
+      const url = new URL(agent.authUrl!);
+      url.searchParams.set('code_challenge', 'abc');
+      const res = await request(origin)
+        .get(url.pathname + url.search)
+        .set('x-forwarded-for', testAddress)
+        .set('accept', 'text/html,application/xhtml+xml,*/*;q=0.8');
+      expect(res.status).to.equal(400);
+      expect(res.headers['content-type']).to.match(/^text\/html/);
+      expect(res.text).to.contain('Error: invalid_request (400)');
+      expect(res.headers.location).to.equal(undefined);
+    });
+
+    it('a browser gets the readable page for an agent whose document cannot be fetched', async () => {
+      const store = Container.get(ClientStore);
+      const fetchDocument = store.fetchDocument;
+      store.fetchDocument = sinon.stub().rejects(new ClientMetadataRefused('timeout', 'x'));
+      try {
+        const url = new URL(`${origin}/xenon/api/oauth/authorize`);
+        url.searchParams.set('response_type', 'code');
+        url.searchParams.set('client_id', 'https://agent.example/client.json');
+        url.searchParams.set('redirect_uri', 'http://127.0.0.1:5000/cb');
+        url.searchParams.set('code_challenge', 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
+        url.searchParams.set('code_challenge_method', 'S256');
+        url.searchParams.set('resource', `${origin}/xenon/mcp`);
+        const res = await request(origin)
+          .get(url.pathname + url.search)
+          .set('x-forwarded-for', testAddress)
+          .set('accept', 'text/html,application/xhtml+xml,*/*;q=0.8');
+        expect(res.status).to.equal(400);
+        expect(res.text).to.contain('Cancel the waiting sign-in in your agent');
+        expect(res.text).to.contain('XENON_MCP_CLIENT_DOCUMENTS=off');
+      } finally {
+        store.fetchDocument = fetchDocument;
+        resetClientDocumentFallback();
       }
     });
 

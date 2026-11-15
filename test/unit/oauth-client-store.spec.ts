@@ -7,11 +7,17 @@ import { useScratchDatabase } from '../helpers/scratch-database';
 import { prisma } from '../../src/prisma';
 import {
   ClientStore,
+  DOCUMENT_UNREACHABLE,
   MAX_REGISTERED_CLIENTS,
   REGISTRATIONS_PER_ADDRESS_PER_HOUR,
   redirectUriProblem,
 } from '../../src/services/oauth/clientStore';
-import { ClientMetadataRefused } from '../../src/services/oauth/clientMetadataDocument';
+import {
+  ClientMetadataRefused,
+  clientDocumentsOffered,
+  noteUnreachableClientDocument,
+  resetClientDocumentFallback,
+} from '../../src/services/oauth/clientMetadataDocument';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -303,6 +309,53 @@ describe('the sign-in client store', () => {
 
   describe('a client named by a metadata document', () => {
     const url = 'https://agent.example/oauth/client.json';
+    afterEach(() => resetClientDocumentFallback());
+
+    it('a network refusal stops offering documents, and an agent already named by one is still read', async () => {
+      const doc = {
+        client_id: url,
+        client_name: 'Doc Agent',
+        redirect_uris: ['http://127.0.0.1:5000/cb'],
+      };
+      const fetch = sinon.stub();
+      fetch
+        .onFirstCall()
+        .rejects(new ClientMetadataRefused('unresolvable', 'agent.example does not resolve'));
+      fetch.onSecondCall().resolves(doc);
+      store.fetchDocument = fetch;
+      const first = await oauthError(store.getClient(url) as Promise<unknown>);
+      expect(first).to.be.instanceOf(InvalidClientError);
+      expect(first.message).to.equal(DOCUMENT_UNREACHABLE);
+      expect(clientDocumentsOffered()).to.equal(false);
+      // Its refresh still works: the hub reads the document as before.
+      expect((await store.getClient(url))?.client_id).to.equal(url);
+      expect(fetch.callCount).to.equal(2);
+    });
+
+    it("does not fall back for a refusal that isn't about the network", async () => {
+      for (const reason of ['status', 'invalid_document', 'client_id_mismatch'] as const) {
+        store.fetchDocument = sinon.stub().rejects(new ClientMetadataRefused(reason, 'x'));
+        await oauthError(store.getClient(url) as Promise<unknown>);
+        expect(clientDocumentsOffered(), reason).to.equal(true);
+      }
+    });
+
+    it('logs one warning when it falls back, naming the switch', async () => {
+      const warn = sinon.stub((store as any).log, 'warn');
+      store.fetchDocument = sinon.stub().rejects(new ClientMetadataRefused('timeout', 'x'));
+      await oauthError(store.getClient(url) as Promise<unknown>);
+      // A second failure within the hour restarts it without another warning.
+      await oauthError(store.getClient(url) as Promise<unknown>);
+      expect(warn.callCount).to.equal(1);
+      expect(String(warn.firstCall.args[0])).to.contain('XENON_MCP_CLIENT_DOCUMENTS=off');
+      expect(String(warn.firstCall.args[0])).to.contain('an hour');
+    });
+
+    it('a registered client still works while documents are not offered', async () => {
+      const info = await store.registerClient(registration());
+      noteUnreachableClientDocument();
+      expect((await store.getClient(info.client_id))?.client_id).to.equal(info.client_id);
+    });
 
     it('is read from the document', async () => {
       const fetch = sinon.stub().resolves({
@@ -376,6 +429,8 @@ describe('the sign-in client store', () => {
     it("answers a name that doesn't resolve exactly as one that resolves privately", async () => {
       const answers: string[] = [];
       for (const reason of ['unresolvable', 'private_address', 'unreachable', 'timeout'] as const) {
+        // Each falls back to registration; start each from documents on.
+        resetClientDocumentFallback();
         store.fetchDocument = sinon
           .stub()
           .rejects(new ClientMetadataRefused(reason, `detail ${reason}`));
