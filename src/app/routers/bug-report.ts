@@ -9,6 +9,7 @@ import {
   SLICE_MIN_SEC,
 } from '../../services/bug-report/types';
 import { roleGuard } from '../../middleware/roleGuard';
+import { isAdminCaller } from '../../middleware/callerRole';
 import log from '../../logger';
 import { SocketServer } from '../../services/SocketServer';
 import { SocketEvents } from '../../enums/SocketEvents';
@@ -64,9 +65,10 @@ router.post('/sessions/:sessionId/bug-report', async (req: Request, res: Respons
   const svc = Container.get(BugReportService);
   let bundle;
   try {
-    // The network capture only for an admin, as /interceptor serves it.
+    // The network capture only for an admin, as /interceptor serves it
+    // (isAdminCaller: never an agent's browser sign-in, as roleGuard('ADMIN')).
     // Through 2.12 any member who could see the session got it here.
-    const includeNetwork = auth?.role === 'ADMIN' || auth?.role === 'SUPER_ADMIN';
+    const includeNetwork = isAdminCaller(req.auth);
     bundle = await svc.assemble({ sessionId, mode, windowSec, includeNetwork });
   } catch (err: any) {
     if (/not found/i.test(err.message)) {

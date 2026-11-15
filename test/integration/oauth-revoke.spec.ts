@@ -349,10 +349,12 @@ describe("revoking an agent's sign-in", function () {
 
   it("a grant's token can't make credentials that would outlive it: 403", async () => {
     const asMember = bearer((await signIn(member)).token);
-    // A browser sign-in never carries the admin scope, so an admin's agent is
-    // refused the admin routes by their scope guard first (`insufficient
-    // scope`). This check stands behind that: a grant's token that somehow
-    // had `admin` is refused too. Signed here with the real grant's gid.
+    // An agent signed in through the browser is never an admin, whatever its
+    // user's role (callerRole.ts), so an admin's agent is refused the admin
+    // routes by their role guard first (`requires role >= ADMIN`), and a
+    // browser sign-in never carries the admin scope either. refuseGrantBound
+    // stands behind both: a grant's token that somehow had `admin` is still
+    // refused. Signed here with the real grant's gid.
     const adminSignIn = (await signIn(admin, ALL_GRANULAR_SCOPES)).token;
     const { gid } = await keys.verify(adminSignIn, { audience: 'xenon-mcp' });
     const asAdmin = bearer(
@@ -365,7 +367,7 @@ describe("revoking an agent's sign-in", function () {
     for (const path of ['/xenon/api/apikeys', '/xenon/api/users']) {
       const refused = await request(origin).post(path).set(asAdminAgent).send({});
       expect(refused.status, path).to.equal(403);
-      expect(refused.body.error, path).to.equal('insufficient scope');
+      expect(refused.body.error, path).to.equal('requires role >= ADMIN');
     }
     const calls: Array<[string, () => request.Test]> = [
       [
@@ -418,10 +420,17 @@ describe("revoking an agent's sign-in", function () {
             .send({}),
       ],
     ];
+    // Routes behind roleGuard('ADMIN') refuse the grant-bound admin token at
+    // the role guard, before refuseGrantBound; the rest at refuseGrantBound.
+    const behindAdminRole = new Set(['POST /apikeys', 'POST /users', 'POST /users/:id/reset-link']);
     for (const [what, call] of calls) {
       const res = await call();
       expect(res.status, `${what}: ${JSON.stringify(res.body)}`).to.equal(403);
-      expect(res.body.error, what).to.equal('agent_sign_in_cannot_make_credentials');
+      expect(res.body.error, what).to.equal(
+        behindAdminRole.has(what)
+          ? 'requires role >= ADMIN'
+          : 'agent_sign_in_cannot_make_credentials',
+      );
     }
     expect(await prisma.apiKey.count({ where: { name: { in: ['agent', 'k'] } } })).to.equal(0);
 

@@ -241,18 +241,19 @@ describe('agent sign-in (OAuth) end to end', () => {
     expect(String(claims.scopes).split(',')).to.not.include('admin');
     expect(claims.roles).to.deep.equal([]);
 
-    // No admin route: managing accounts, or another user's agents.
+    // No admin route: managing accounts, or another user's agents. The agent
+    // is judged as a member (callerRole.ts), so the role guard refuses it.
     const patch = await request(origin)
       .patch(`/xenon/api/users/${other.user.id}`)
       .set('authorization', bearer)
       .send({ role: 'ADMIN' });
     expect(patch.status, JSON.stringify(patch.body)).to.equal(403);
-    expect(patch.body).to.deep.equal({ error: 'insufficient scope' });
+    expect(patch.body).to.deep.equal({ error: 'requires role >= ADMIN' });
     const bulk = await request(origin)
       .delete(`/xenon/api/oauth/grants?userId=${other.user.id}`)
       .set('authorization', bearer);
     expect(bulk.status).to.equal(403);
-    expect(bulk.body).to.deep.equal({ error: 'insufficient scope' });
+    expect(bulk.body).to.deep.equal({ error: 'requires role >= ADMIN' });
     // The admin, signed in to the dashboard, may.
     const asAdmin = await request(origin)
       .get('/xenon/api/users')

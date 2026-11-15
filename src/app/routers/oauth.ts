@@ -35,6 +35,7 @@ import { RequestLimiter, callerAddress, requestLimiter } from '../../services/oa
 import { ALL_GRANULAR_SCOPES } from '../../services/token/mcpScopes';
 import { GrantStore } from '../../services/oauth/grantStore';
 import { roleGuard } from '../../middleware/roleGuard';
+import { isAdminCaller } from '../../middleware/callerRole';
 import { scopeGuard } from '../../middleware/scopeGuard';
 
 const logger = log.scope('OAuthRoutes');
@@ -466,11 +467,11 @@ const GRANT_NOT_FOUND = { error: 'not_found', message: 'Agent sign-in not found'
 /**
  * An ADMIN or SUPER_ADMIN whose credential carries the `admin` scope: what
  * `roleGuard('ADMIN')` plus `scopeGuard(['admin'])` let through, as the bulk
- * route asks. A SUPER_ADMIN's read-only token is not an admin here.
+ * route asks. A SUPER_ADMIN's read-only token is not an admin here, nor is an
+ * agent's browser sign-in (isAdminCaller).
  */
 function holdsAdminScope(req: Request): boolean {
-  const role = req.auth?.role;
-  if (role !== 'ADMIN' && role !== 'SUPER_ADMIN') return false;
+  if (!isAdminCaller(req.auth)) return false;
   return String(req.auth?.scopes ?? '')
     .split(',')
     .some((s) => s.trim() === 'admin');

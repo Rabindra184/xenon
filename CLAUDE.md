@@ -2530,14 +2530,30 @@ run `http://lab-mac:4723`), with the SDK's own rate limiters off.
   Never flat `admin` or `roles: ['admin']` (`grantForRole` passes
   `resolveMcpGrant` `neverAdmin`): an agent asks for every scope, and an
   admin's agent would otherwise pass every `scopeGuard(['admin'])` without
-  the consent page saying so. What the role grants by itself still follows
-  it: team visibility, and routes behind `roleGuard('ADMIN')` with no admin
-  scope guard (`/interceptor`, block, unblock and tags with `devices`, app
-  delete, `GET /config`, a bug report's network capture). A grant-bound
-  credential (Bearer or session token with a `gid`) is never `overrideAdmin`
-  in per-command auth or `xenon_execute_script` (`commandCaller.ts`), a
-  SUPER_ADMIN's included. `resolveActor` and the lease override at session
-  create still read a SUPER_ADMIN's role. `POST /auth/token` keeps the
+  the consent page saying so.
+- **A grant-bound caller is never an admin** (`src/middleware/callerRole.ts`).
+  A credential naming a grant (a Bearer or `xenon-session` token with a
+  `gid`: `req.auth.grantId`, the MCP caller's `grantId`) is judged as a
+  MEMBER wherever Xenon decides by the user's role: `effectiveRole`, used by
+  `roleGuard` and `superAdminGuard` themselves (so every `roleGuard('ADMIN')`
+  route: `/interceptor`, `POST /register`, `/ports`, block, unblock and tags,
+  app delete, `GET /config`, users, teams, keys, webhooks, processes),
+  `isAdminCaller` (a bug report's network capture, `holdsAdminScope`),
+  `resolveActor().isAdmin` (false for a grant whatever its role or scopes:
+  the `/control` ownership guard, stream and logcat tickets, the hub's
+  control token, recordings, reservations) and `canOverrideLease` (its
+  `grantId`: per-command auth, `xenon_execute_script`, and the lease
+  override at session create, which reads the session token's `gid`).
+  `roleGuard('MEMBER')` still admits it. Team visibility is not routed
+  through it: `computeTeamIds` still gives an admin's agent every team's
+  phones (`teamIds` undefined), and what reads `teamIds === undefined` as
+  "admin" follows (an app upload into any team or the shared pool,
+  `xe:options.team` naming any team). Display (`/auth/me`'s and
+  `xenon_lab_info`'s `role`) shows the user's role. Through 2.37's review an
+  ADMIN's or SUPER_ADMIN's agent passed every role-only check (captured
+  traffic, phone rows, the lab's settings, and for a SUPER_ADMIN the
+  ownership guard and the lease override). An admin who wants an agent to
+  administer the lab gives it an API key. `POST /auth/token` keeps the
   full-admin rule.
   The refresh token is opaque, rotated on each use (`GrantStore.rotate`), 30
   days unused or 90 in all (`XENON_MCP_REFRESH_IDLE_DAYS`,
@@ -2558,7 +2574,10 @@ user):
   it live after. `RevokedGrants.isLive` sits under `verifyBearerCredential`,
   `verifySessionTokenCredential` and per-command auth's cache: a grant found
   live is trusted 30 s, a revoke on this server refuses it at once, another
-  server sharing the database sees it within 30 s.
+  server sharing the database sees it within 30 s. Live is GrantStore's own
+  rule (`grantIsLive`, `grantLifetime.ts`): a grant past its `expiresAt`, its
+  maximum life or its idle window is refused as a revoked one is, pruned or
+  not, so a day-long session token doesn't outlive its sign-in.
 - `LeaseService.endLeasesOfGrant(id, 'grant_revoked')` ends its leases with
   the release protocol. A failure is logged and the revoke stands.
 - `revokeAllOf(userId)` revokes every unrevoked grant of the user, past its
@@ -2583,8 +2602,8 @@ user):
   SUPER_ADMIN holding the `admin` scope (`holdsAdminScope`), else it is the
   unknown grant's `404`. The bulk `DELETE /?userId=` is `roleGuard`'s `403
   requires role >= ADMIN` for a non-admin and `scopeGuard`'s `403
-  insufficient scope` for an admin without the scope, an admin's agent
-  included. A credential with no user is `403`.
+  insufficient scope` for an admin without the scope. An admin's agent is
+  `roleGuard`'s `403` (it is judged a MEMBER). A credential with no user is `403`.
 
 **Dashboard.** "AI agents" (`/agents`, `web/src/components/agents/`) for
 every signed-in user: per agent what `website/docs/ai-agents.mdx` gives
@@ -2603,7 +2622,7 @@ yet, so nothing names it on screen.
 
 ### Identity & Manual Locks
 
-Authentication: every `/xenon/api` request is gated by `authMiddleware` (`src/middleware/authMiddleware.ts`), which accepts either the (`x-xenon-access-key`, `x-xenon-token`) header pair or the `xenon_dashboard_session` cookie — a `UserSession` id and nothing else. A cookie that isn't one falls through to the ticket paths, never to an API key. It also accepts a hub-issued RS256 JWT as `Authorization: Bearer` (audience `xenon-rest`, minted by `POST /auth/token`, validated against the hub's JWKS) — the same middleware, a third credential path with a live user lookup so REST revocation is instant. A dashboard socket takes the same changes as they are saved, and closes when REST stops taking its bearer token (see "A socket's identity follows its user"). The token's `scopes` claim is fixed at mint, so `verifyBearerCredential` drops `admin` from it once the user is a MEMBER (REST and per-command auth both read it). It always sets `req.auth = { kind, userId, role, scopes, teamIds, rateLimit, … }`; `req.apiKey = { id, scopes, teamId, rateLimit }` is additionally set on the API-key paths only, never for cookie user-sessions. Through 2.18 the cookie also took a raw API token, checked without its access key, unaffected by sign-out and renewed on every request, and `POST /auth/dashboard-session` put a SUPER_ADMIN's token there. That route is gone (an unknown route's `404`): making a sign-in session from a token instead would raise the token to its owner's role, and nothing called it. `scopeGuard(['devices'])` and `mutationScopeGuard(['devices'])` (mutations only — GETs always pass) enforce scope-based access on routers like `/control`. Two more inputs: a request an MCP tool made in process carries its caller under `PRESET_CALLER` (`src/mcp/invokeApi.ts`, a symbol on the request object that no header, query or body can set), which `authMiddleware` takes as `req.auth` (and `req.apiKey` for a key pair) without reading a credential, and `csrfMiddleware` lets through, since no browser sent it; and a bearer token from an agent's browser sign-in carries the grant's id (`gid`), which `verifyBearerCredential` refuses once the grant is revoked (`RevokedGrants`; see "Xenon's MCP server"). Such a caller has `req.auth.grantId`.
+Authentication: every `/xenon/api` request is gated by `authMiddleware` (`src/middleware/authMiddleware.ts`), which accepts either the (`x-xenon-access-key`, `x-xenon-token`) header pair or the `xenon_dashboard_session` cookie — a `UserSession` id and nothing else. A cookie that isn't one falls through to the ticket paths, never to an API key. It also accepts a hub-issued RS256 JWT as `Authorization: Bearer` (audience `xenon-rest`, minted by `POST /auth/token`, validated against the hub's JWKS) — the same middleware, a third credential path with a live user lookup so REST revocation is instant. A dashboard socket takes the same changes as they are saved, and closes when REST stops taking its bearer token (see "A socket's identity follows its user"). The token's `scopes` claim is fixed at mint, so `verifyBearerCredential` drops `admin` from it once the user is a MEMBER (REST and per-command auth both read it). It always sets `req.auth = { kind, userId, role, scopes, teamIds, rateLimit, … }` (`role` is the user's; an admin decision reads `effectiveRole(req.auth)`, which is MEMBER for a grant-bound caller, `src/middleware/callerRole.ts`); `req.apiKey = { id, scopes, teamId, rateLimit }` is additionally set on the API-key paths only, never for cookie user-sessions. Through 2.18 the cookie also took a raw API token, checked without its access key, unaffected by sign-out and renewed on every request, and `POST /auth/dashboard-session` put a SUPER_ADMIN's token there. That route is gone (an unknown route's `404`): making a sign-in session from a token instead would raise the token to its owner's role, and nothing called it. `scopeGuard(['devices'])` and `mutationScopeGuard(['devices'])` (mutations only — GETs always pass) enforce scope-based access on routers like `/control`. Two more inputs: a request an MCP tool made in process carries its caller under `PRESET_CALLER` (`src/mcp/invokeApi.ts`, a symbol on the request object that no header, query or body can set), which `authMiddleware` takes as `req.auth` (and `req.apiKey` for a key pair) without reading a credential, and `csrfMiddleware` lets through, since no browser sent it; and a bearer token from an agent's browser sign-in carries the grant's id (`gid`), which `verifyBearerCredential` refuses once the grant is revoked (`RevokedGrants`; see "Xenon's MCP server"). Such a caller has `req.auth.grantId`.
 
 **The sign-in limit** (`loginRateLimiter.ts`, on `POST /auth/login` and
 `/auth/forgot-password`) counts attempts per caller address: Express's `req.ip`,
@@ -2685,7 +2704,8 @@ interactive, so "watch the test I started" works.
   device — except `OWNERSHIP_CHECKED_READS` (currently just `clipboard`, which
   returns whatever the holder last copied). Keep that list short.
 - `evaluateDeviceAccess` (`src/services/device-access/deviceAccessPolicy.ts`) is
-  pure: admin → allow; **leased** (a live SDK lease, busy or not) → allow the
+  pure: admin (`resolveActor().isAdmin`: a SUPER_ADMIN or an `admin`-scoped
+  credential, never an agent's browser sign-in) → allow; **leased** (a live SDK lease, busy or not) → allow the
   lease holder (the key that created it, or any credential of the user behind
   it: `SessionOwnerResolver.leaseHolderOf`) and the owner of a session running
   on it, deny anyone else (`device_held_by_another_user`, with a message saying

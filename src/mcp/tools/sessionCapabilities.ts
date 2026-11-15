@@ -100,8 +100,9 @@ export const sessionCapabilitiesTool = defineTool({
     'needs (platformName, app, ...). capabilities carry xe:options.sessionToken, which makes ' +
     'the session yours. With a device from xenon_acquire_device, pass its lockId and ' +
     'leaseToken: the capabilities then name that device and its lease. expiresAt (epoch ms) ' +
-    'is when the token ends: a day by default, or when the API key or token you connected ' +
-    'with ends, if sooner. Ask again for each new session.',
+    'is when the token ends: a day by default. Connected with an API key or token, it ends ' +
+    'when that does, if sooner; signed in through the browser, it stops working as soon as ' +
+    'that sign-in ends or is signed out. Ask again for each new session.',
   params: sessionCapabilitiesParams,
   annotations: { readOnlyHint: true, destructiveHint: false },
   async run(args, caller) {

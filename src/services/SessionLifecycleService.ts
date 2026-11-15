@@ -109,7 +109,14 @@ interface CredentialOwner {
 
 type LeaseCredential =
   | { kind: 'api-key'; scopes: string; user: CredentialOwner; teamId: string | null }
-  | { kind: 'session-token'; scopes: string; user: CredentialOwner; teamId: string | null }
+  | {
+      kind: 'session-token';
+      scopes: string;
+      user: CredentialOwner;
+      teamId: string | null;
+      /** The agent's sign-in grant the token was minted under (its `gid`): never an override. */
+      grantId?: string;
+    }
   | { kind: 'none' };
 
 const SESSION_TOKEN_LACKS_SCOPE =
@@ -939,8 +946,12 @@ export class SessionLifecycleService {
 
     const { ApiKeyService } = await import('./ApiKeyService');
     const svc = Container.get(ApiKeyService);
-    const { verifyKeyPairCredential, verifySessionTokenCredential, isWrongSessionToken } =
-      await import('../middleware/verifyCredential');
+    const {
+      verifyKeyPairCredential,
+      verifySessionTokenCredential,
+      isWrongSessionToken,
+      grantIdOf,
+    } = await import('../middleware/verifyCredential');
 
     // xe:options.{accessKey, token} — the only key-pair credential shape.
     // Checked by REST's rule (verifyKeyPairCredential): a live key whose owner
@@ -1020,6 +1031,7 @@ export class SessionLifecycleService {
       let tokenTeamId: string | null = null;
       let tokenScopes: unknown;
       let tokenOwner: CredentialOwner | undefined;
+      let tokenGrantId: string | undefined;
       const identity = await resolveSessionIdentity({
         row: null,
         sessionToken: credentials.sessionToken,
@@ -1028,6 +1040,7 @@ export class SessionLifecycleService {
           tokenTeamId = typeof payload?.teamId === 'string' ? payload.teamId : null;
           tokenScopes = payload?.scopes;
           tokenOwner = user;
+          tokenGrantId = grantIdOf(payload);
           return payload;
         },
       });
@@ -1050,6 +1063,7 @@ export class SessionLifecycleService {
               scopes: String(tokenScopes),
               user: tokenOwner,
               teamId: tokenTeamId,
+              grantId: tokenGrantId,
             }
           : { kind: 'none' },
       );
@@ -1142,6 +1156,7 @@ export class SessionLifecycleService {
         kind: credential.kind,
         scopes: credential.scopes,
         user,
+        grantId: credential.kind === 'session-token' ? credential.grantId : undefined,
       });
       const role = user.role === 'SUPER_ADMIN' || user.role === 'ADMIN' ? user.role : 'MEMBER';
       const teamIds = await computeTeamIds({

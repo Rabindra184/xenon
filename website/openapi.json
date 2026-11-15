@@ -14131,7 +14131,7 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "Your role is below `ADMIN`, or too low for this account, or the caller is an agent signed in\nthrough the browser (`agent_sign_in_cannot_make_credentials`): a reset link is a way into\nanother account.\n",
+            "description": "Your role is below `ADMIN` (an agent signed in through the browser counts as a member), or\ntoo low for this account, or the caller is an agent signed in through the browser\n(`agent_sign_in_cannot_make_credentials`): a reset link is a way into another account.\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -15223,7 +15223,7 @@
       "post": {
         "operationId": "exchangeOAuthToken",
         "summary": "Get or refresh an agent's tokens",
-        "description": "Public. The OAuth token endpoint, `application/x-www-form-urlencoded`, with `client_id`.\n\n- `grant_type=authorization_code` with `code`, `code_verifier` and the `redirect_uri` the\n  code was issued for. A code lasts 60 seconds and works once; a code sent a second time\n  revokes the sign-in the first use made.\n- `grant_type=refresh_token` with `refresh_token`, and `scope` to narrow (never widen) the\n  scopes. Every refresh rotates the refresh token; one presented again after its use\n  revokes the whole sign-in.\n\n`resource`, when sent, must be this hub's MCP endpoint (with or without a trailing slash),\nelse `invalid_target`, before the code or refresh token is used. The access token is the\n`xenon-mcp` bearer token `/mcp` and the API take, for one hour, with the granted scopes\ncut to the user's role, which is looked up at every exchange. It never carries the\n`admin` scope, an admin's included, so the routes that need it refuse an agent signed in\nthrough the browser. A refresh token lasts 30 days unused and 90 days in all; one presented again after\nits use is remembered as long as it could have worked (the 30 days unused).\n\n**Limit.** 50 requests per 15 minutes from one address; past that `429`.\n",
+        "description": "Public. The OAuth token endpoint, `application/x-www-form-urlencoded`, with `client_id`.\n\n- `grant_type=authorization_code` with `code`, `code_verifier` and the `redirect_uri` the\n  code was issued for. A code lasts 60 seconds and works once; a code sent a second time\n  revokes the sign-in the first use made.\n- `grant_type=refresh_token` with `refresh_token`, and `scope` to narrow (never widen) the\n  scopes. Every refresh rotates the refresh token; one presented again after its use\n  revokes the whole sign-in.\n\n`resource`, when sent, must be this hub's MCP endpoint (with or without a trailing slash),\nelse `invalid_target`, before the code or refresh token is used. The access token is the\n`xenon-mcp` bearer token `/mcp` and the API take, for one hour, with the granted scopes\ncut to the user's role, which is looked up at every exchange. It never carries the\n`admin` scope, an admin's included, so the routes that need it refuse an agent signed in\nthrough the browser. Nor does the user's role make the agent an admin: an admin's agent\nacts with member rights plus every team's phones, and routes that need the `ADMIN` or\n`SUPER_ADMIN` role refuse it (`requires role >= ADMIN`). A refresh token lasts 30 days unused and 90 days in all; one presented again after\nits use is remembered as long as it could have worked (the 30 days unused).\n\n**Limit.** 50 requests per 15 minutes from one address; past that `429`.\n",
         "tags": [
           "Agent sign-in"
         ],
@@ -15644,7 +15644,7 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "The caller isn't an admin (`requires role >= ADMIN`), or is one without the `admin`\nscope (`insufficient scope`), as an admin's agent signed in through the browser always\nis.\n",
+            "description": "The caller isn't an admin (`requires role >= ADMIN`), as an agent signed in through the\nbrowser never is, an admin's included; or is one without the `admin` scope\n(`insufficient scope`).\n",
             "content": {
               "application/json": {
                 "schema": {

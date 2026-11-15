@@ -1029,9 +1029,9 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           description: |
-            Your role is below `ADMIN`, or too low for this account, or the caller is an agent signed in
-            through the browser (`agent_sign_in_cannot_make_credentials`): a reset link is a way into
-            another account.
+            Your role is below `ADMIN` (an agent signed in through the browser counts as a member), or
+            too low for this account, or the caller is an agent signed in through the browser
+            (`agent_sign_in_cannot_make_credentials`): a reset link is a way into another account.
           content:
             application/json:
               schema:
@@ -1893,7 +1893,9 @@ paths:
         `xenon-mcp` bearer token `/mcp` and the API take, for one hour, with the granted scopes
         cut to the user's role, which is looked up at every exchange. It never carries the
         `admin` scope, an admin's included, so the routes that need it refuse an agent signed in
-        through the browser. A refresh token lasts 30 days unused and 90 days in all; one presented again after
+        through the browser. Nor does the user's role make the agent an admin: an admin's agent
+        acts with member rights plus every team's phones, and routes that need the `ADMIN` or
+        `SUPER_ADMIN` role refuse it (`requires role >= ADMIN`). A refresh token lasts 30 days unused and 90 days in all; one presented again after
         its use is remembered as long as it could have worked (the 30 days unused).
 
         **Limit.** 50 requests per 15 minutes from one address; past that `429`.
@@ -2193,9 +2195,9 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           description: |
-            The caller isn't an admin (`requires role >= ADMIN`), or is one without the `admin`
-            scope (`insufficient scope`), as an admin's agent signed in through the browser always
-            is.
+            The caller isn't an admin (`requires role >= ADMIN`), as an agent signed in through the
+            browser never is, an admin's included; or is one without the `admin` scope
+            (`insufficient scope`).
           content:
             application/json:
               schema:

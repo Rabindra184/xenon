@@ -1,5 +1,6 @@
 /// <reference path="../../types/express.d.ts" />
 import type { Request } from 'express';
+import { isGrantBound, isSuperAdminCaller } from '../../middleware/callerRole';
 
 export interface DeviceAccessActor {
   userId?: string;
@@ -20,6 +21,10 @@ export interface DeviceAccessActor {
  * req.apiKey is never populated for one, so an ADMIN on the dashboard would
  * otherwise fail an admin check.
  *
+ * An agent's browser sign-in (a credential naming a grant, `auth.grantId`)
+ * is never an admin here, whatever its user's role or its scopes
+ * (callerRole.ts): it is judged as the member it acts as.
+ *
  * Every ownership decision in the codebase resolves its actor here:
  * deviceAccessGuard, stream/start, stream/stop and the recordings router. If
  * you are about to derive an actor some other way, you are re-introducing the
@@ -32,6 +37,6 @@ export function resolveActor(req: Request): DeviceAccessActor {
   return {
     userId: auth?.userId,
     apiKeyId: auth?.apiKeyId ?? req.apiKey?.id,
-    isAdmin: auth?.role === 'SUPER_ADMIN' || scopes.has('admin'),
+    isAdmin: !isGrantBound(auth?.grantId) && (isSuperAdminCaller(auth) || scopes.has('admin')),
   };
 }

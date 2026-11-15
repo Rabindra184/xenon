@@ -89,19 +89,13 @@ export function commandCallerOf(mcp: McpCaller): CommandCaller {
   const { auth } = mcp;
   return {
     userId: auth.userId,
-    overrideAdmin:
-      !grantBound(mcp.grantId) &&
-      canOverrideLease({
-        kind: 'api-key',
-        scopes: auth.scopes ?? '',
-        user: { role: auth.role },
-      }),
+    overrideAdmin: canOverrideLease({
+      kind: 'api-key',
+      scopes: auth.scopes ?? '',
+      user: { role: auth.role },
+      grantId: mcp.grantId ?? auth.grantId,
+    }),
   };
-}
-
-/** Whether a credential came from an agent's browser sign-in: never an override admin. */
-function grantBound(grantId: string | undefined): boolean {
-  return typeof grantId === 'string' && grantId !== '';
 }
 
 /**
@@ -239,13 +233,12 @@ export class CommandCallerVerifier {
     return {
       caller: {
         userId: out.user.id,
-        overrideAdmin:
-          !grantBound(grantId) &&
-          canOverrideLease({
-            kind: 'api-key',
-            scopes: String(out.payload.scopes ?? ''),
-            user: out.user,
-          }),
+        overrideAdmin: canOverrideLease({
+          kind: 'api-key',
+          scopes: String(out.payload.scopes ?? ''),
+          user: out.user,
+          grantId,
+        }),
       },
       credentialExpiresAt: typeof out.payload.exp === 'number' ? out.payload.exp * 1000 : undefined,
       grantId,
@@ -274,13 +267,12 @@ export class CommandCallerVerifier {
     return {
       caller: {
         userId: out.user.id,
-        overrideAdmin:
-          !grantBound(grantId) &&
-          canOverrideLease({
-            kind: 'session-token',
-            scopes: String(out.payload.scopes ?? ''),
-            user: out.user,
-          }),
+        overrideAdmin: canOverrideLease({
+          kind: 'session-token',
+          scopes: String(out.payload.scopes ?? ''),
+          user: out.user,
+          grantId,
+        }),
       },
       credentialExpiresAt: typeof out.payload.exp === 'number' ? out.payload.exp * 1000 : undefined,
       grantId,

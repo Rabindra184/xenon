@@ -1,3 +1,5 @@
+import { isGrantBound } from '../../middleware/callerRole';
+
 /**
  * May an Appium session use a lease it did not create?
  *
@@ -19,13 +21,23 @@
  * session token was judged by its user's role alone, so an ADMIN's key
  * without the admin scope minted itself a token that could override.
  *
+ * A credential issued under an agent's browser sign-in (`grantId`, a token's
+ * `gid`) never overrides, whatever its user's role: an admin's agent acts
+ * with member rights (callerRole.ts).
+ *
  * `user` is the credential's owner, or null when there is none or the account
  * is not ACTIVE; either way nothing is overridden. Which phones the session
  * can see is a separate question (`isDeviceVisible`), with no admin exception.
  */
 export type LeaseOverrideCredential =
   | { kind: 'auth-disabled' }
-  | { kind: 'api-key' | 'session-token'; scopes: string; user: { role: string } | null }
+  | {
+      kind: 'api-key' | 'session-token';
+      scopes: string;
+      user: { role: string } | null;
+      /** The agent's sign-in grant the credential was issued under, if any. */
+      grantId?: string | null;
+    }
   | { kind: 'none' };
 
 export function canOverrideLease(credential: LeaseOverrideCredential): boolean {
@@ -35,6 +47,7 @@ export function canOverrideLease(credential: LeaseOverrideCredential): boolean {
     case 'api-key':
     case 'session-token': {
       if (!credential.user) return false;
+      if (isGrantBound(credential.grantId)) return false;
       const scopes = new Set(credential.scopes.split(',').map((s) => s.trim()));
       const { role } = credential.user;
       if (credential.kind === 'session-token') {
