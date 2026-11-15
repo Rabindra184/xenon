@@ -104,7 +104,7 @@ export default function AgentsPage() {
       <PageHeader
         icon={Bot}
         title="AI agents"
-        subtitle="Add this lab to your coding agent. It signs in with your account in this browser and uses the lab as you, without admin rights."
+        subtitle="Add this lab to your coding agent. It signs in with your account in this browser and uses the lab as you."
       />
       <div className="px-6 py-6 max-w-5xl space-y-6">
         {load.kind === 'loading' && (

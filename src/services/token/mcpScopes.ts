@@ -81,8 +81,9 @@ export interface McpGrantOptions {
    * flat `admin` or `roles: ['admin']`, even for an admin granted every MCP
    * scope. An agent asks for every scope the hub lists (the SDK's client
    * does), and the consent page doesn't say "and admin", so an admin's agent
-   * gets what a Member's does plus the role's team visibility, never REST's
-   * admin routes or an override of another user's session. POST /auth/token
+   * gets what a Member's does plus what its role grants by itself (every
+   * team's phones), never a route that needs the `admin` scope or an
+   * override of another user's session. POST /auth/token
    * keeps the full-admin rule: its caller asks for exactly what it names.
    */
   neverAdmin?: boolean;

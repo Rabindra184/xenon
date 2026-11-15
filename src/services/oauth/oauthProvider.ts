@@ -45,9 +45,10 @@ type Role = 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER';
  * were asked for and none can be granted.
  *
  * Never `admin` (`neverAdmin`): an agent asks for every scope the hub lists,
- * so an admin's agent would otherwise get REST's admin routes without the
- * consent page saying so. Team visibility still follows the role, which is
- * looked up at every request.
+ * so an admin's agent would otherwise get every route that needs the `admin`
+ * scope without the consent page saying so. What the role grants by itself
+ * (team visibility, routes guarded by role alone) still follows it, looked up
+ * at every request.
  */
 export function grantForRole(role: string, requested: string[]): McpGrant {
   const flat = scopesForRole(role as Role);

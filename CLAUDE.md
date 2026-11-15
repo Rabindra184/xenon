@@ -2529,8 +2529,11 @@ run `http://lab-mac:4723`), with the SDK's own rate limiters off.
   user's role now (`scopesForRole`, every exchange and refresh), and `gid`.
   Never flat `admin` or `roles: ['admin']` (`grantForRole` passes
   `resolveMcpGrant` `neverAdmin`): an agent asks for every scope, and an
-  admin's agent would otherwise get REST's admin routes without the consent
-  page saying so. Its team visibility still follows the role. A grant-bound
+  admin's agent would otherwise pass every `scopeGuard(['admin'])` without
+  the consent page saying so. What the role grants by itself still follows
+  it: team visibility, and routes behind `roleGuard('ADMIN')` with no admin
+  scope guard (`/interceptor`, block, unblock and tags with `devices`, app
+  delete, `GET /config`, a bug report's network capture). A grant-bound
   credential (Bearer or session token with a `gid`) is never `overrideAdmin`
   in per-command auth or `xenon_execute_script` (`commandCaller.ts`), a
   SUPER_ADMIN's included. `resolveActor` and the lease override at session

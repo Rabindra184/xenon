@@ -136,7 +136,7 @@ What the agent then holds:
 
 The agent can do what your account can, as far as the scopes you allowed go: the same teams' phones, the same ownership rules, the same answers REST gives you. Xenon checks your account on every renewal and every call, so a user set to Inactive or deleted is refused at once, and their agents are signed out.
 
-An admin's agent gets no admin rights. It sees every team's phones, as its admin does, but it can't manage users, API keys, teams or settings, sign out other users' agents, or run Xenon's commands on another user's session. Do those in the dashboard, or with an API key that has the `admin` scope.
+An admin's agent never gets the `admin` scope. It sees every team's phones, as its admin does, but it can't manage users, API keys, teams or settings, sign out other users' agents, or run Xenon's commands on another user's session. Do those in the dashboard, or with an API key that has the `admin` scope.
 
 ### Behind a reverse proxy
 
@@ -205,7 +205,7 @@ Each tool needs one MCP scope. A tool outside the scopes the agent holds isn't l
 | `xenon:recordings` | `xenon_start_recording`, `xenon_stop_recording` | Start and stop [recordings](./recordings.md) | `devices` or `admin` |
 | `xenon:execute` | `xenon_execute_script` | Run Xenon's own commands on a session you own: tap by text or icon, list and check what's on screen, wait settings, network mocks and the session's captured traffic, the session's name, status and tags | `sessions` or `admin` |
 
-- **Through the browser,** the agent asks for scopes and gets those your role allows. Every role allows all six, so the consent page lists what the agent asked for. An agent that asks for none gets `appium:use` and `xenon:devices:read`. None of them is an admin right, for an admin's agent too.
+- **Through the browser,** the agent asks for scopes and gets those your role allows. Every role allows all six, so the consent page lists what the agent asked for. An agent that asks for none gets `appium:use` and `xenon:devices:read`. None of them brings the `admin` scope, for an admin's agent too.
 - **With an `xenon-mcp` token** from `POST /auth/token`, the agent has the token's scopes. With no `scopes` in the request, the token gets `appium:use` and `xenon:devices:read`, as far as your credential allows them. `xenon:execute` is given only when asked for.
 - **`xenon:execute` sees what the session sees.** Its taps and screen checks send a screenshot to the lab's AI provider, and it can read what the session's network capture recorded, sign-in headers and cookies included. Give it only to an agent you would let see those.
 

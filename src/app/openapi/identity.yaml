@@ -1892,8 +1892,8 @@ paths:
         else `invalid_target`, before the code or refresh token is used. The access token is the
         `xenon-mcp` bearer token `/mcp` and the API take, for one hour, with the granted scopes
         cut to the user's role, which is looked up at every exchange. It never carries the
-        `admin` scope, an admin's included: an agent signed in through the browser has no admin
-        rights. A refresh token lasts 30 days unused and 90 days in all; one presented again after
+        `admin` scope, an admin's included, so the routes that need it refuse an agent signed in
+        through the browser. A refresh token lasts 30 days unused and 90 days in all; one presented again after
         its use is remembered as long as it could have worked (the 30 days unused).
 
         **Limit.** 50 requests per 15 minutes from one address; past that `429`.
