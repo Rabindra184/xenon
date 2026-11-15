@@ -139,7 +139,7 @@ What the agent then holds:
 
 The agent can do what your account can, as far as the scopes you allowed go: the same teams' phones, the same ownership rules, the same answers REST gives you. Xenon checks your account on every renewal and every call, so a user set to Inactive or deleted is refused at once, and their agents are signed out.
 
-An agent signed in by an admin acts with a member's rights plus every team's phones, never with admin rights. It sees and uses every team's phones, as its admin does, and nothing more: Xenon judges it as a member wherever it would check for an admin. So it can't, for example, read a session's captured network traffic, use or take over a phone another user holds or has leased, register or block phones, delete apps, read or change the lab's settings, or manage users, API keys, teams or other users' agents. This holds for a super admin's agent too. An admin who wants an agent to administer the lab gives it an API key (one with the `admin` scope for routes that ask for it) instead of a browser sign-in.
+An agent signed in by an admin acts with a member's rights plus every team's phones, never with admin rights. It sees and uses every team's phones, as its admin does, and nothing more: Xenon judges it as a member wherever it would check for an admin. So it can't, for example, read a session's captured network traffic, use or take over a phone another user holds or has leased, register or block phones, delete apps, read or change the lab's settings, or manage users, API keys, teams or other users' agents. This holds for a super admin's agent too. An admin who wants an agent to administer the lab gives it an API key (one with the `admin` scope for routes that ask for it) instead of a browser sign-in. Two things still follow its admin's role, because they come from which teams' phones it sees: it may upload an app into any team or the shared pool, and name any team in a session's `xe:options.team`. `GET /xenon/api/auth/me` and `xenon_lab_info` give its user's `role` and, as `actsAs`, the role it acts as (`MEMBER`).
 
 ### Behind a reverse proxy
 
@@ -237,7 +237,7 @@ Every tool's answer is JSON text. A refusal is a tool error, not a protocol erro
 
 ### `xenon_lab_info`
 
-Any signed-in agent. No arguments. The hub's version and the features `GET /xenon/api/capabilities` reports, and who the agent is: `userId`, `role`, `teams` (`{ id, name }`), `seesEveryTeam` (an admin, who sees every team's phones) and `scopes`.
+Any signed-in agent. No arguments. The hub's version and the features `GET /xenon/api/capabilities` reports, and who the agent is: `userId`, `role` (its user's), `actsAs` (the role it acts as: `MEMBER` for an agent signed in through the browser), `teams` (`{ id, name }`), `seesEveryTeam` (an admin, who sees every team's phones) and `scopes`.
 
 ### `xenon_list_devices`
 

@@ -128,6 +128,27 @@ describe('the sign-in error page', () => {
     expect(res.text).to.contain('response_type must be code');
   });
 
+  it("says a server fault is the hub's, not the request's", async () => {
+    for (const body of [
+      { error: 'server_error', error_description: 'Internal Server Error' },
+      { error: 'internal' },
+    ]) {
+      const res = await request(appAnswering(500, body)).get('/authorize').set('accept', BROWSER);
+      expect(res.status).to.equal(500);
+      expect(res.text).to.contain('Something went wrong on the hub');
+      expect(res.text).to.not.contain("wasn't valid");
+    }
+  });
+
+  it('says the answer depends on Accept, as JSON and as a page', async () => {
+    const body = { error: 'invalid_request', error_description: 'x' };
+    const page = await request(appAnswering(400, body)).get('/authorize').set('accept', BROWSER);
+    const json = await request(appAnswering(400, body)).get('/authorize');
+    for (const res of [page, json]) {
+      expect(String(res.headers.vary)).to.match(/\bAccept\b/);
+    }
+  });
+
   it('passes a successful JSON answer through', async () => {
     const res = await request(appAnswering(200, { ok: true }))
       .get('/authorize')

@@ -40,6 +40,20 @@ No database migration. On a hub, only the hub needs this release.
   or general advice for any other agent. A client that asks for JSON, or says nothing,
   gets the JSON it always got.
 
+### Changed
+
+- **`/auth/me` and `xenon_lab_info` say which role an agent acts as.** Both
+  still give the user's `role`, and now also `actsAs`: the role Xenon judges
+  the credential as, `MEMBER` for an agent signed in through the browser
+  whatever its user's role. Through 2.38 an admin's agent read `ADMIN` or
+  `SUPER_ADMIN` there while every admin check treated it as a member.
+- **The sign-in error page says a server fault is the hub's.** A 5xx on the
+  authorize page reads "Something went wrong on the hub" instead of "The
+  sign-in request wasn't valid", and the route's answers carry
+  `Vary: Accept`, since each is JSON or a page by what the client accepts.
+- **Docs:** an admin's agent may still upload apps into any team and name any
+  team in `xe:options.team`, since those follow which teams' phones it sees.
+
 ## 2.38.0
 
 **The hub serves MCP itself: add it to any coding agent, and the agent signs in through your browser.**

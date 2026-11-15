@@ -1983,6 +1983,15 @@
           "role": {
             "$ref": "#/components/schemas/IdentityRole"
           },
+          "actsAs": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/IdentityRole"
+              }
+            ],
+            "nullable": true,
+            "description": "The role Xenon judges this credential as wherever it checks for an admin. The user's\n`role`, except `MEMBER` for an agent's browser sign-in, whatever its user's role.\n"
+          },
           "accessKey": {
             "type": "string",
             "nullable": true,
@@ -6116,6 +6125,51 @@
             "example": {
               "error": "too_many_requests",
               "error_description": "Too many token requests from this address"
+            }
+          }
+        }
+      },
+      "IdentityOAuthAuthorizeError": {
+        "description": "An OAuth error, answered directly, never by a redirect: as JSON, or to a browser as a\nshort page with the same status.\n",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/IdentityOAuthErrorBody"
+            },
+            "example": {
+              "error": "invalid_client",
+              "error_description": "The client_id document could not be fetched"
+            }
+          },
+          "text/html": {
+            "schema": {
+              "type": "string",
+              "description": "A standalone page saying what happened and what to do, with the error code."
+            }
+          }
+        }
+      },
+      "IdentityOAuthAuthorizeTooManyRequests": {
+        "description": "Too many sign-ins from this address; try again after `Retry-After` seconds.",
+        "headers": {
+          "Retry-After": {
+            "$ref": "#/components/headers/Retry-After"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/IdentityOAuthErrorBody"
+            },
+            "example": {
+              "error": "too_many_requests",
+              "error_description": "Too many sign-in requests from this address"
+            }
+          },
+          "text/html": {
+            "schema": {
+              "type": "string",
+              "description": "A standalone page saying to wait a minute, with the error code."
             }
           }
         }
@@ -13221,7 +13275,7 @@
       "get": {
         "operationId": "getCurrentIdentity",
         "summary": "Get who you are signed in as",
-        "description": "Who the credential belongs to: the user, their role, the scopes this credential carries, the\nteam the credential is bound to (`teamId`, API keys and bearer tokens only) and the user's\nteams. `kind` says how the request authenticated: `user-session` (the dashboard cookie),\n`api-key` (the key pair, or a raw API key in the cookie), or `bearer`.\n\n`teams` lists the caller's teams by name; it is empty for admins, who see every team's\ndevices. With authentication disabled on the server the answer is a fixed synthetic\n`SUPER_ADMIN` identity with `authDisabled: true` and no access key.\n",
+        "description": "Who the credential belongs to: the user, their role, the scopes this credential carries, the\nteam the credential is bound to (`teamId`, API keys and bearer tokens only) and the user's\nteams. `kind` says how the request authenticated: `user-session` (the dashboard cookie),\n`api-key` (the key pair, or a raw API key in the cookie), or `bearer`.\n\n`actsAs` is the role Xenon judges this credential as: the user's `role`, except `MEMBER`\nfor an agent's browser sign-in (an admin's agent acts with a member's rights plus every\nteam's phones).\n\n`teams` lists the caller's teams by name; it is empty for admins, who see every team's\ndevices. With authentication disabled on the server the answer is a fixed synthetic\n`SUPER_ADMIN` identity with `authDisabled: true` and no access key.\n",
         "tags": [
           "Authentication"
         ],
@@ -13238,6 +13292,7 @@
                   "email": "priya.shah@example.com",
                   "name": "Priya Shah",
                   "role": "MEMBER",
+                  "actsAs": "MEMBER",
                   "accessKey": "xen_4Hq8ZkP2mW7tR9vB",
                   "scopes": "devices,sessions,read",
                   "teamId": null,
@@ -15052,7 +15107,7 @@
       "post": {
         "operationId": "registerOAuthClient",
         "summary": "Register an agent (dynamic client registration)",
-        "description": "Public. RFC 7591 dynamic client registration for an AI agent that signs in to `/mcp`.\nEvery agent is a public client: no client secret is made or kept, whatever\n`token_endpoint_auth_method` the request names, and PKCE proves the agent at the token step.\n\nRedirect URIs (at least one, at most 10): loopback (`http://127.0.0.1`, `http://[::1]`,\n`http://localhost`, any port), any `https` URL, or an app's own scheme\n(`cursor://...`). No fragment and no user name. An agent may instead use an `https` URL\nas its `client_id` (a client ID metadata document) and skip registering, unless the hub\nhas `XENON_MCP_CLIENT_DOCUMENTS=off` (a lab that can't reach the internet), which its\nmetadata then says.\n\n**Limits.** 20 requests an hour from one address, counted as `trustProxy` reads it (an\nIPv6 address by its /64), failed ones included; past that `429`. Past 20 registrations\nan hour from one address, or with 500 agents each signed in or registered in the last 10\nminutes, a registration is `400 too_many_requests`. An agent unused for 30 days is\nforgotten.\n\nServed on a hub or a standalone server with sign-in on: on a node, or with auth disabled,\nit answers `404`.\n",
+        "description": "Public. RFC 7591 dynamic client registration for an AI agent that signs in to `/mcp`.\nEvery agent is a public client: no client secret is made or kept, whatever\n`token_endpoint_auth_method` the request names, and PKCE proves the agent at the token step.\n\nRedirect URIs (at least one, at most 10): loopback (`http://127.0.0.1`, `http://[::1]`,\n`http://localhost`, any port), any `https` URL, or an app's own scheme\n(`cursor://...`). No fragment and no user name. An agent may instead use an `https` URL\nas its `client_id` (a client ID metadata document) and skip registering, unless the hub\nhas `XENON_MCP_CLIENT_DOCUMENTS=off` (a lab that can't reach the internet), which its\nmetadata then says. Without the setting, a document that can't be fetched for a network\nreason makes the metadata stop offering documents for an hour, so new agents register.\n\n**Limits.** 20 requests an hour from one address, counted as `trustProxy` reads it (an\nIPv6 address by its /64), failed ones included; past that `429`. Past 20 registrations\nan hour from one address, or with 500 agents each signed in or registered in the last 10\nminutes, a registration is `400 too_many_requests`. An agent unused for 30 days is\nforgotten.\n\nServed on a hub or a standalone server with sign-in on: on a node, or with auth disabled,\nit answers `404`.\n",
         "tags": [
           "Agent sign-in"
         ],
@@ -15121,7 +15176,7 @@
       "get": {
         "operationId": "authorizeOAuthClient",
         "summary": "Start an agent's sign-in in the browser",
-        "description": "Public. The OAuth authorization endpoint, opened in the user's browser by the agent.\nNeeds `response_type=code`, `client_id`, PKCE (`code_challenge` and\n`code_challenge_method=S256`; `plain` is refused) and, when the agent registered more\nthan one, `redirect_uri`. `resource` (RFC 8707), when sent, must be this hub's MCP\nendpoint (`<origin>/xenon/mcp`, with or without a trailing slash); a request without one\nis bound to this hub. `scope` is the MCP scopes asked for; the user's role cuts them.\n\nThe redirect URI must be one the agent registered, exactly, except that a loopback one\nmay name any port (RFC 8252).\n\nAnything wrong before the user has consented is answered here, never by a redirect to the\nagent: an unknown client or redirect URI, a `response_type` other than `code`, a missing,\nplain or malformed PKCE challenge, `scope` or `state` given twice (`400\ninvalid_request`), a `resource` that isn't this hub (`400 invalid_target`), and too many\nsign-ins waiting (`429`). An agent can register any https redirect URI, and a redirect\nthere on an error would send the user from the hub's own link to any page. Otherwise the\nrequest waits 10 minutes for the user's answer (at most 10 waiting from one address; a\nnew one drops that address's oldest), and the browser goes to the dashboard's consent page,\n`/xenon/oauth/consent/<requestId>`, signed in or not: the dashboard's cookie is\nSameSite=Strict, so the browser an agent opens carries none here. The page's own requests\ncarry it, and a signed-out visitor is sent to sign in and back to the page.\n\n**Discovery.** Agents find this route from two documents on the server's root, outside\n`/xenon`: the protected-resource metadata (RFC 9728) at\n`/.well-known/oauth-protected-resource/xenon/mcp` (and the root form,\n`/.well-known/oauth-protected-resource`), which `/mcp`'s `401` names, and the\nauthorization-server metadata (RFC 8414) at `/.well-known/oauth-authorization-server`.\nBoth name the hub by `XENON_PUBLIC_URL` when it is set, else by the request's scheme and\nhost (a reverse proxy's forwarded ones only with `trustProxy`), plain HTTP included.\n\n**Limit.** 100 requests per 15 minutes from one address; past that `429`.\n",
+        "description": "Public. The OAuth authorization endpoint, opened in the user's browser by the agent.\nNeeds `response_type=code`, `client_id`, PKCE (`code_challenge` and\n`code_challenge_method=S256`; `plain` is refused) and, when the agent registered more\nthan one, `redirect_uri`. `resource` (RFC 8707), when sent, must be this hub's MCP\nendpoint (`<origin>/xenon/mcp`, with or without a trailing slash); a request without one\nis bound to this hub. `scope` is the MCP scopes asked for; the user's role cuts them.\n\nThe redirect URI must be one the agent registered, exactly, except that a loopback one\nmay name any port (RFC 8252).\n\nAnything wrong before the user has consented is answered here, never by a redirect to the\nagent: an unknown client or redirect URI, a `response_type` other than `code`, a missing,\nplain or malformed PKCE challenge, `scope` or `state` given twice (`400\ninvalid_request`), a `resource` that isn't this hub (`400 invalid_target`), and too many\nsign-ins waiting (`429`). An agent can register any https redirect URI, and a redirect\nthere on an error would send the user from the hub's own link to any page. Otherwise the\nrequest waits 10 minutes for the user's answer (at most 10 waiting from one address; a\nnew one drops that address's oldest), and the browser goes to the dashboard's consent page,\n`/xenon/oauth/consent/<requestId>`, signed in or not: the dashboard's cookie is\nSameSite=Strict, so the browser an agent opens carries none here. The page's own requests\ncarry it, and a signed-out visitor is sent to sign in and back to the page.\n\n**Discovery.** Agents find this route from two documents on the server's root, outside\n`/xenon`: the protected-resource metadata (RFC 9728) at\n`/.well-known/oauth-protected-resource/xenon/mcp` (and the root form,\n`/.well-known/oauth-protected-resource`), which `/mcp`'s `401` names, and the\nauthorization-server metadata (RFC 8414) at `/.well-known/oauth-authorization-server`.\nBoth name the hub by `XENON_PUBLIC_URL` when it is set, else by the request's scheme and\nhost (a reverse proxy's forwarded ones only with `trustProxy`), plain HTTP included.\n\n**In a browser.** Every error here goes to a browser (a request preferring `text/html`)\nas a short page with the same status, saying what happened and what to do, and the error\ncode below; anything else gets the JSON. For an agent whose `client_id` document couldn't\nbe fetched, the page names its next step (Claude Code: sign it out of the hub first).\nThe answers carry `Vary: Accept`.\n\n**Limit.** 100 requests per 15 minutes from one address; past that `429`.\n",
         "tags": [
           "Agent sign-in"
         ],
@@ -15211,10 +15266,10 @@
             }
           },
           "400": {
-            "$ref": "#/components/responses/IdentityOAuthError"
+            "$ref": "#/components/responses/IdentityOAuthAuthorizeError"
           },
           "429": {
-            "$ref": "#/components/responses/IdentityOAuthTooManyRequests"
+            "$ref": "#/components/responses/IdentityOAuthAuthorizeTooManyRequests"
           }
         }
       }

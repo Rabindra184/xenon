@@ -20,6 +20,7 @@ import { buildResetLink, resetEmail, resetLinkBase } from '../../services/passwo
 import { mintedLifetimeSec } from '../../services/token/mintedLifetime';
 import { mcpTokenTtlSec } from '../../services/token/mcpTokenTtl';
 import { refuseGrantBound } from '../../middleware/refuseGrantBound';
+import { effectiveRole } from '../../middleware/callerRole';
 
 const SESSION_COOKIE = 'xenon_dashboard_session';
 const isSecureFromReq = (req: any) =>
@@ -310,6 +311,7 @@ export function authAuthedRouter(): Router {
           teamId?: string | null;
           teamIds?: string[];
           kind: string;
+          grantId?: string;
         }
       | undefined;
     if (!auth) return res.status(401).json({ error: 'unauthenticated' });
@@ -324,6 +326,7 @@ export function authAuthedRouter(): Router {
         email: 'auth-disabled@xenon.local',
         name: 'Auth Disabled',
         role: auth.role ?? 'SUPER_ADMIN',
+        actsAs: auth.role ?? 'SUPER_ADMIN',
         accessKey: null,
         scopes: auth.scopes,
         teamId: auth.teamId ?? null,
@@ -361,6 +364,9 @@ export function authAuthedRouter(): Router {
       teamId: auth.teamId ?? null,
       kind: auth.kind,
       teams,
+      // The role Xenon judges this caller as: its user's, except MEMBER for an
+      // agent's browser sign-in (effectiveRole). `role` stays the user's.
+      actsAs: effectiveRole(auth) ?? null,
       authDisabled: false,
     });
   });

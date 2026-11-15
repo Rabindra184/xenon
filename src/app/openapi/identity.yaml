@@ -287,6 +287,10 @@ paths:
         teams. `kind` says how the request authenticated: `user-session` (the dashboard cookie),
         `api-key` (the key pair, or a raw API key in the cookie), or `bearer`.
 
+        `actsAs` is the role Xenon judges this credential as: the user's `role`, except `MEMBER`
+        for an agent's browser sign-in (an admin's agent acts with a member's rights plus every
+        team's phones).
+
         `teams` lists the caller's teams by name; it is empty for admins, who see every team's
         devices. With authentication disabled on the server the answer is a fixed synthetic
         `SUPER_ADMIN` identity with `authDisabled: true` and no access key.
@@ -304,6 +308,7 @@ paths:
                 email: priya.shah@example.com
                 name: Priya Shah
                 role: MEMBER
+                actsAs: MEMBER
                 accessKey: xen_4Hq8ZkP2mW7tR9vB
                 scopes: devices,sessions,read
                 teamId: null
@@ -1732,7 +1737,8 @@ paths:
         (`cursor://...`). No fragment and no user name. An agent may instead use an `https` URL
         as its `client_id` (a client ID metadata document) and skip registering, unless the hub
         has `XENON_MCP_CLIENT_DOCUMENTS=off` (a lab that can't reach the internet), which its
-        metadata then says.
+        metadata then says. Without the setting, a document that can't be fetched for a network
+        reason makes the metadata stop offering documents for an hour, so new agents register.
 
         **Limits.** 20 requests an hour from one address, counted as `trustProxy` reads it (an
         IPv6 address by its /64), failed ones included; past that `429`. Past 20 registrations
@@ -1814,6 +1820,12 @@ paths:
         Both name the hub by `XENON_PUBLIC_URL` when it is set, else by the request's scheme and
         host (a reverse proxy's forwarded ones only with `trustProxy`), plain HTTP included.
 
+        **In a browser.** Every error here goes to a browser (a request preferring `text/html`)
+        as a short page with the same status, saying what happened and what to do, and the error
+        code below; anything else gets the JSON. For an agent whose `client_id` document couldn't
+        be fetched, the page names its next step (Claude Code: sign it out of the hub first).
+        The answers carry `Vary: Accept`.
+
         **Limit.** 100 requests per 15 minutes from one address; past that `429`.
       tags:
         - Agent sign-in
@@ -1870,9 +1882,9 @@ paths:
                 type: string
                 example: /xenon/oauth/consent/Qm9vb3RzdHJhcHBlZC1yZXF1ZXN0LWlk
         '400':
-          $ref: '#/components/responses/IdentityOAuthError'
+          $ref: '#/components/responses/IdentityOAuthAuthorizeError'
         '429':
-          $ref: '#/components/responses/IdentityOAuthTooManyRequests'
+          $ref: '#/components/responses/IdentityOAuthAuthorizeTooManyRequests'
 
   /api/oauth/token:
     post:
@@ -2324,6 +2336,37 @@ components:
           example:
             error: too_many_requests
             error_description: Too many token requests from this address
+    IdentityOAuthAuthorizeError:
+      description: |
+        An OAuth error, answered directly, never by a redirect: as JSON, or to a browser as a
+        short page with the same status.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/IdentityOAuthErrorBody'
+          example:
+            error: invalid_client
+            error_description: The client_id document could not be fetched
+        text/html:
+          schema:
+            type: string
+            description: A standalone page saying what happened and what to do, with the error code.
+    IdentityOAuthAuthorizeTooManyRequests:
+      description: Too many sign-ins from this address; try again after `Retry-After` seconds.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/Retry-After'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/IdentityOAuthErrorBody'
+          example:
+            error: too_many_requests
+            error_description: Too many sign-in requests from this address
+        text/html:
+          schema:
+            type: string
+            description: A standalone page saying to wait a minute, with the error code.
     IdentityConsentNeedsDashboard:
       description: Not a dashboard sign-in. Consent is given in the dashboard, signed in.
       content:
@@ -2605,6 +2648,13 @@ components:
           type: string
         role:
           $ref: '#/components/schemas/IdentityRole'
+        actsAs:
+          allOf:
+            - $ref: '#/components/schemas/IdentityRole'
+          nullable: true
+          description: |
+            The role Xenon judges this credential as wherever it checks for an admin. The user's
+            `role`, except `MEMBER` for an agent's browser sign-in, whatever its user's role.
         accessKey:
           type: string
           nullable: true

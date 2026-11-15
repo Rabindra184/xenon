@@ -2532,7 +2532,8 @@ run `http://lab-mac:4723`), with the SDK's own rate limiters off.
     limiter's 429 and the SDK handler's own answers. When the request
     prefers `text/html` it sends a standalone page with the status kept (and
     `Retry-After`): no script, no link off the hub, `no-store`, no framing,
-    escaped text.
+    escaped text. Every answer on the route carries `Vary: Accept`, and a
+    5xx says the fault is the hub's.
   - **Who still gets JSON:** a client that asks for it, or says nothing. The
     specs' requests send no Accept, so they read JSON.
   - **The unreachable-document page** names the agent's next step by its URL
@@ -2578,7 +2579,8 @@ run `http://lab-mac:4723`), with the SDK's own rate limiters off.
   phones (`teamIds` undefined), and what reads `teamIds === undefined` as
   "admin" follows (an app upload into any team or the shared pool,
   `xe:options.team` naming any team). Display (`/auth/me`'s and
-  `xenon_lab_info`'s `role`) shows the user's role. Through 2.37's review an
+  `xenon_lab_info`'s `role`) shows the user's role, and both add `actsAs`,
+  `effectiveRole`'s answer (`MEMBER` for a grant-bound caller). Through 2.37's review an
   ADMIN's or SUPER_ADMIN's agent passed every role-only check (captured
   traffic, phone rows, the lab's settings, and for a SUPER_ADMIN the
   ownership guard and the lease override). An admin who wants an agent to

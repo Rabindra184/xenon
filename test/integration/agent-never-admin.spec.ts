@@ -42,6 +42,7 @@ import { config } from '../../src/config';
 import { DefaultPluginArgs } from '../../src/interfaces/IPluginArgs';
 import { resolveMcpCaller } from '../../src/mcp/mcpCredential';
 import { invokeApi } from '../../src/mcp/invokeApi';
+import { BugReportService } from '../../src/services/bug-report/BugReportService';
 
 const REDIRECT = 'http://127.0.0.1:33420/callback';
 
@@ -318,6 +319,71 @@ describe('an agent signed in by an admin is never an admin (integration)', funct
         expect(res.status, JSON.stringify(res.body)).to.equal(200);
         const udids = (res.body as Array<{ udid: string }>).map((d) => d.udid);
         expect(udids).to.include.members([PHONE.teamA, PHONE.teamB]);
+      });
+
+      it("/auth/me names the role the agent acts as, beside its user's role", async () => {
+        const agent = await request(origin)
+          .get('/xenon/api/auth/me')
+          .set(await agentOf(user()));
+        expect(agent.status, JSON.stringify(agent.body)).to.equal(200);
+        expect(agent.body.role).to.equal(role);
+        expect(agent.body.actsAs).to.equal('MEMBER');
+        const own = await request(origin)
+          .get('/xenon/api/auth/me')
+          .set(await keyOf(user()));
+        expect(own.body.actsAs).to.equal(role);
+      });
+
+      it('xenon_lab_info names the role the agent acts as', async () => {
+        const result = await callTool(await agentOf(user()), 'xenon_lab_info');
+        const info = JSON.parse(result.content[0].text);
+        expect(info.role).to.equal(role);
+        expect(info.actsAs).to.equal('MEMBER');
+      });
+
+      it("the agent's bug report leaves out the network capture; the user's key gets it", async () => {
+        const assemble = sinon
+          .stub(Container.get(BugReportService), 'assemble')
+          .rejects(new Error('Session not found'));
+        try {
+          const path = `/xenon/api/sessions/ana-bug-${stamp}/bug-report?mode=full`;
+          const agent = await request(origin)
+            .post(path)
+            .set(await agentOf(user()));
+          expect(agent.status, JSON.stringify(agent.body)).to.equal(404);
+          const own = await request(origin)
+            .post(path)
+            .set(await keyOf(user()));
+          expect(own.status, JSON.stringify(own.body)).to.equal(404);
+          expect(assemble.callCount).to.equal(2);
+          expect(assemble.firstCall.args[0].includeNetwork, 'agent').to.equal(false);
+          expect(assemble.secondCall.args[0].includeNetwork, 'key').to.equal(true);
+        } finally {
+          assemble.restore();
+        }
+      });
+
+      it("the agent can't make credentials that would outlive its sign-in", async () => {
+        const headers = await agentOf(user());
+        const usersBefore = await prisma.user.count();
+        const keysBefore = await prisma.apiKey.count();
+        const attempts: Array<[string, Record<string, unknown>]> = [
+          ['/xenon/api/apikeys', { name: `ana-agent-key-${stamp}`, scopes: ['read'] }],
+          [
+            '/xenon/api/users',
+            { email: `ana-agent-${stamp}@xenon.local`, name: 'Made by an agent', role: 'MEMBER' },
+          ],
+          [`/xenon/api/users/${other.user.id}/reset-link`, {}],
+        ];
+        for (const [path, body] of attempts) {
+          const res = await request(origin).post(path).set(headers).send(body);
+          expect(res.status, `${path}: ${JSON.stringify(res.body)}`).to.equal(403);
+        }
+        expect(await prisma.user.count()).to.equal(usersBefore);
+        expect(await prisma.apiKey.count()).to.equal(keysBefore);
+        expect(
+          await prisma.passwordResetToken.count({ where: { userId: other.user.id } }),
+        ).to.equal(0);
       });
 
       it("a tool's in-process call is judged the same: the caller /xenon/mcp holds names the grant", async () => {
