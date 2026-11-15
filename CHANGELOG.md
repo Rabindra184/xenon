@@ -8,7 +8,7 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
-## Unreleased
+## 2.38.0
 
 **The hub serves MCP itself: add it to any coding agent, and the agent signs in through your browser.**
 
@@ -61,6 +61,15 @@ hub as before.
   agents signed out. A session the agent already started goes on unless
   `XENON_REQUIRE_COMMAND_AUTH` is on, and a recording it started keeps its
   phones until it is stopped.
+- **Checked with Claude Code, Codex and Cursor.** Each signed in through
+  the consent page, listed the tools and was cut off by Sign out. The page's
+  Codex command is `codex mcp add` alone, since that command starts the
+  sign-in itself (a `codex mcp login` after it asked for a second sign-in),
+  and Cursor's entry says to click Authenticate in Cursor's MCP settings.
+  Claude Code and Codex name themselves by a client metadata URL, which the
+  hub fetches over the internet; Cursor registers itself. A lab that can't
+  reach the internet, or sets `XENON_MCP_CLIENT_DOCUMENTS=off`, hasn't been
+  checked with Claude Code or Codex.
 - **An agent's lease needs no heartbeats.** A lease taken through a tool
   lasts 15 minutes unless the agent asks for another length (1 minute to 24
   hours) or extends it, and ends when the agent releases it, at its end, or

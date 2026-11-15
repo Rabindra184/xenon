@@ -53,6 +53,10 @@ Upgrade each server the same way. Whether the order matters is up to the release
 
 [Hub and nodes](./hub-and-nodes.md) explains how the two kinds of server work together.
 
+## From 2.37 to 2.38
+
+Version 2.38.0 brings two database migrations, applied at startup: two columns on `Lease` and two new tables for agents' sign-ins. The hub now serves MCP at `/xenon/mcp`, so coding agents such as Claude Code, Codex and Cursor can use the lab and sign in through your browser; the dashboard's **AI agents** page shows how to add it to each. On a hub, only the hub needs this release: a node doesn't serve MCP. Behind a reverse proxy, set `trustProxy` (as for 2.37), since agents' sign-ins are limited per caller address too.
+
 ## From 2.36 to 2.37
 
 Version 2.37.0 brings no database migration. It fixes how sessions, phones, streams, recordings, leases and Selector Health statuses change state when two things happen at once, so a phone in use is no longer freed or handed to a second session. If Xenon runs behind a reverse proxy, set the `trustProxy` option (or `XENON_TRUST_PROXY`), for example to `1` or `loopback`. The sign-in limit now counts each caller's own address, and without the setting every sign-in through the proxy counts against the proxy's one address. Upgrade a hub and its nodes: some of the fixes run on the node. They work together in either order.
