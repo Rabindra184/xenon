@@ -11,6 +11,8 @@ describe('titleForPath', () => {
     ['/devices/381103b720057ece/control/logs', '381103b720057ece · Device · Xenon'],
     ['/runbooks/network', 'Runbook · network · Xenon'],
     ['/login', 'Sign in · Xenon'],
+    ['/agents', 'AI agents · Xenon'],
+    ['/oauth/consent/Qm9vdA', 'Allow an agent · Xenon'],
     ['/reset-password', 'Reset password · Xenon'],
     ['/settings/', 'Settings · Xenon'],
     ['/something-unknown', 'Xenon'],

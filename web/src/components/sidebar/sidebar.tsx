@@ -10,6 +10,7 @@ import {
   Settings as SettingsIcon,
   HeartPulse,
   BookOpen,
+  Bot,
   PanelLeftClose,
   PanelLeftOpen,
   type LucideIcon,
@@ -57,6 +58,9 @@ const groups: NavGroup[] = [
         icon: HeartPulse,
         path: '/selector-health',
       },
+      // Every signed-in user: what adds this lab to a coding agent, and the
+      // agents they have signed in (spec section 6).
+      { id: 'agents', label: 'AI agents', icon: Bot, path: '/agents' },
     ],
   },
   {

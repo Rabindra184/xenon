@@ -112,6 +112,7 @@ describe('CommandIndex — builds and the destinations it used to miss', () => {
     ['Selector health', '/selector-health'],
     ['Users', '/settings/users'],
     ['Profile', '/profile'],
+    ['AI agents', '/agents'],
   ])('navigates to %s', (label, path) => {
     const idx = new CommandIndex();
     expect(idx.search(label)[0]).toMatchObject({ kind: 'nav', label, path });

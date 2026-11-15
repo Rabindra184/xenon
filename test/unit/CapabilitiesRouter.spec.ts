@@ -77,6 +77,32 @@ describe('capabilities payload', () => {
     });
   });
 
+  it("answered to a request, mcpServer.url is this server's MCP endpoint as agents reach it", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const express = require('express');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const request = require('../helpers/loopbackRequest').default;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { capabilitiesRouter } = require('../../src/app/routers/capabilities');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { config } = require('../../src/config');
+    const app = express();
+    app.use('/xenon/api/capabilities', capabilitiesRouter());
+
+    const plain = await request(app).get('/xenon/api/capabilities');
+    expect(plain.body.features.mcpServer.url).to.match(/^http:\/\/127\.0\.0\.1:\d+\/xenon\/mcp$/);
+
+    // XENON_PUBLIC_URL names it when set: the OAuth `resource` must be this.
+    const saved = config.publicUrl;
+    config.publicUrl = 'https://xenon.example.com/xenon/';
+    try {
+      const named = await request(app).get('/xenon/api/capabilities');
+      expect(named.body.features.mcpServer.url).to.equal('https://xenon.example.com/xenon/mcp');
+    } finally {
+      config.publicUrl = saved;
+    }
+  });
+
   it("doesn't report mcpServer on a node, which doesn't serve /xenon/mcp", () => {
     const context = Container.get(PluginContext);
     const saved = context.pluginArgs;

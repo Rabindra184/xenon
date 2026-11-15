@@ -76,11 +76,14 @@ function dashboardAddresses(): Array<{ address: string; file: string }> {
 }
 
 describe('the addresses the dashboard calls', () => {
+  // A node and a hub (or standalone server) serve different routes: a hub's
+  // calls to a node only on the first, agents' sign-in only on the second.
   const served = [
     ...routesOf(
       createRouter({ ...DefaultPluginArgs, hub: 'http://hub.example:4723' } as any),
       '/xenon',
     ),
+    ...routesOf(createRouter({ ...DefaultPluginArgs } as any), '/xenon'),
   ]
     .filter((r) => r.includes(' /xenon/api'))
     .map((r) => shape(r.slice(r.indexOf(' ') + 1)));

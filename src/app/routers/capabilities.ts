@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Request, Router } from 'express';
 import { sessionTokenGateEnabled } from '../../services/sessionTokenGate';
 import { commandAuthEnabled } from '../../middleware/commandAuth';
 import { Container } from 'typedi';
@@ -12,7 +12,7 @@ import { currentAiRedaction } from '../../services/AIService';
 import { describeAiRedaction } from '../../services/ai/aiRedaction';
 import { TracingService } from '../../services/TracingService';
 import { toolNames } from '../../mcp/toolRegistry';
-import { MCP_PATH, servesMcp } from '../../mcp/publicOrigin';
+import { MCP_PATH, mcpResourceUrl, servesMcp } from '../../mcp/publicOrigin';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const pkg = require('../../../package.json');
 
@@ -28,7 +28,13 @@ function leasing(): { host: true; nodePhones: boolean; reason?: string } {
     : { host: true, nodePhones: false, reason: NODE_CREDENTIALS_MISSING };
 }
 
-export function buildCapabilities() {
+/**
+ * `req`, when answering one: `mcpServer.url` is then the MCP endpoint as
+ * agents name it (XENON_PUBLIC_URL's origin, else the request's), the URL
+ * the dashboard's AI agents page gives them. Without one (xenon_lab_info,
+ * specs) there is no url.
+ */
+export function buildCapabilities(req?: Request) {
   return {
     version: String(pkg.version),
     // Where this server's WebDriver API lives ('' is the root), as
@@ -107,7 +113,15 @@ export function buildCapabilities() {
       // doesn't report it. `contractVersion` changes when a tool's name or
       // arguments do.
       ...(servesMcp(Container.get(PluginContext).pluginArgs)
-        ? { mcpServer: { path: MCP_PATH, oauth: true, contractVersion: 1, tools: toolNames() } }
+        ? {
+            mcpServer: {
+              path: MCP_PATH,
+              ...(req ? { url: mcpResourceUrl(req) } : {}),
+              oauth: true,
+              contractVersion: 1,
+              tools: toolNames(),
+            },
+          }
         : {}),
     },
   };
@@ -115,6 +129,6 @@ export function buildCapabilities() {
 
 export function capabilitiesRouter(): Router {
   const r = Router();
-  r.get('/', (_req, res) => res.json(buildCapabilities()));
+  r.get('/', (req, res) => res.json(buildCapabilities(req)));
   return r;
 }

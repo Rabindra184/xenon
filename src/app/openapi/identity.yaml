@@ -1580,7 +1580,10 @@ paths:
         `sessionTokenGate` (`XENON_REQUIRE_SESSION_TOKEN`), `commandAuth`
         (`XENON_REQUIRE_COMMAND_AUTH`), `leasing` (whether a node's phone can be leased) and
         `tokenLogFilter` (the server's `log-filters`) report the live settings, and
-        `traceContext.exporting` whether this server exports traces. Any signed-in user may call it.
+        `traceContext.exporting` whether this server exports traces. `mcpServer`, on a hub or a
+        standalone server only, is the tools for AI coding agents: `url` is the endpoint agents
+        are given (`XENON_PUBLIC_URL`'s origin when set, else the request's), the address the
+        dashboard's AI agents page shows. Any signed-in user may call it.
       tags:
         - Health & Ops
       responses:
@@ -1709,8 +1712,9 @@ paths:
         there on an error would send the user from the hub's own link to any page. Otherwise the
         request waits 10 minutes for the user's answer (at most 10 waiting from one address; a
         new one drops that address's oldest), and the browser goes to the dashboard's consent page,
-        `/xenon/oauth/consent/<requestId>`, through the sign-in page
-        (`/xenon/login?next=/oauth/consent/<requestId>`) when it carries no dashboard sign-in.
+        `/xenon/oauth/consent/<requestId>`, signed in or not: the dashboard's cookie is
+        SameSite=Strict, so the browser an agent opens carries none here. The page's own requests
+        carry it, and a signed-out visitor is sent to sign in and back to the page.
 
         **Discovery.** Agents find this route from two documents on the server's root, outside
         `/xenon`: the protected-resource metadata (RFC 9728) at
@@ -1769,7 +1773,7 @@ paths:
             example: https://xenon.example.com/xenon/mcp
       responses:
         '302':
-          description: To the consent page, or to the sign-in page first.
+          description: To the consent page.
           headers:
             Location:
               schema:

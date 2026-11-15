@@ -176,22 +176,36 @@ log.info('[Xenon] Dashboard available at: /xenon/ (e.g. http://localhost:4723/xe
 // drops 'unsafe-eval' and the default-src wildcard to avoid full XSS-to-RCE.
 // Google Fonts (fonts.googleapis.com for CSS, fonts.gstatic.com for woff2)
 // are explicitly allowlisted because the bundled stylesheets @import them.
+const CSP_DIRECTIVES = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "img-src 'self' data: blob:",
+  "media-src 'self' blob:",
+  "connect-src 'self' ws: wss: http: https:",
+  "font-src 'self' data: https://fonts.gstatic.com",
+];
+const csp = (frameAncestors: string) =>
+  [...CSP_DIRECTIVES, `frame-ancestors ${frameAncestors}`].join('; ') + ';';
+
 router.use((req, res, next) => {
-  res.setHeader(
-    'Content-Security-Policy',
-    [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline'",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "img-src 'self' data: blob:",
-      "media-src 'self' blob:",
-      "connect-src 'self' ws: wss: http: https:",
-      "font-src 'self' data: https://fonts.gstatic.com",
-      "frame-ancestors 'self'",
-    ].join('; ') + ';',
-  );
+  res.setHeader('Content-Security-Policy', csp("'self'"));
   next();
 });
+
+/**
+ * A dashboard page (index.html, for every client-side route) may be framed
+ * by no site, its own included. The consent page signs an agent in as the
+ * user with one click on Allow, so a page that framed it could take that
+ * click (clickjacking). It is the one index.html, and the dashboard's router
+ * reaches the consent page from any entry (a sign-in's `next`, a path in
+ * another letter case), so every page says so, not the consent path alone.
+ * Nothing frames the dashboard.
+ */
+function refuseFraming(res: express.Response): void {
+  res.setHeader('Content-Security-Policy', csp("'none'"));
+  res.setHeader('X-Frame-Options', 'DENY');
+}
 
 staticFilesRouter.use(express.static(publicPath, { index: false }));
 router.use('/api', apiRouter);
@@ -214,8 +228,8 @@ function createRouter(
   // Sign-in for agents (OAuth: register, authorize, token, revoke), on a hub
   // or standalone server: ahead of the CSRF check and the login. An agent's
   // token call carries no Origin and no credential but its PKCE verifier and
-  // code, and these routes read no cookie for any decision but where the
-  // browser goes next (oauth.ts).
+  // code, and these routes read no cookie (oauth.ts): authorize sends every
+  // browser to the dashboard's consent page, which checks the sign-in.
   apiRouter.use('/oauth', oauthPublicRouter);
   registerOAuthRoutes(oauthPublicRouter, pluginArgs);
 
@@ -352,6 +366,7 @@ function createRouter(
     if (url.includes('/api/')) return res.status(404).json({ error: true, message: 'Not Found' });
 
     log.debug(`[Xenon] UI Fallback triggered for: ${url}. Targeting: ${indexPath}`);
+    refuseFraming(res);
 
     if (fs.existsSync(indexPath)) {
       try {

@@ -32,8 +32,6 @@ import { AuthCodes } from '../../services/oauth/authCodes';
 import { PendingAuthorizations } from '../../services/oauth/pendingAuthorizations';
 import { RequestLimiter, callerAddress, requestLimiter } from '../../services/oauth/callerAddress';
 import { ALL_GRANULAR_SCOPES } from '../../services/token/mcpScopes';
-import { UserSessionService } from '../../services/UserSessionService';
-import { dashboardSessionIdOf } from '../../middleware/authMiddleware';
 import { GrantStore } from '../../services/oauth/grantStore';
 import { roleGuard } from '../../middleware/roleGuard';
 import { scopeGuard } from '../../middleware/scopeGuard';
@@ -208,9 +206,12 @@ function refuseBadAuthorizeRequests(req: Request, res: Response, next: NextFunct
 /**
  * The authorize step after the SDK has checked the client and its redirect
  * URI: the `resource` must be this hub, then the request waits for the user's
- * consent. A signed-in browser goes to the consent page, any other to the
- * dashboard's sign-in first, which comes back to it. Both are paths, so the
- * browser stays on the host it reached the hub at. Never throws: a failure
+ * consent, and the browser goes to the dashboard's consent page, signed in
+ * or not. The dashboard cookie is SameSite=Strict, so the navigation an
+ * agent starts carries none and authorize can't tell who is signed in; the
+ * consent page's own requests carry it, and its route guard sends a
+ * signed-out visitor to sign in and back. A path, so the browser stays on
+ * the host it reached the hub at. Never throws: a failure
  * here is answered directly (answerDirectly), since a throw would become the
  * SDK's redirect to the agent.
  */
@@ -237,30 +238,9 @@ async function beginAuthorization(
       },
       callerAddress(req),
     );
-    const consentPage = `${CONSENT_PAGE}/${pending.id}`;
-    const signedIn = await hasDashboardSession(req);
-    res.redirect(
-      302,
-      signedIn ? `/xenon${consentPage}` : `/xenon/login?next=${encodeURIComponent(consentPage)}`,
-    );
+    res.redirect(302, `/xenon${CONSENT_PAGE}/${pending.id}`);
   } catch (err) {
     answerDirectly(res, err);
-  }
-}
-
-/**
- * Whether the browser carries a live dashboard sign-in. A hint for where to
- * send it, nothing more: the consent routes check the sign-in themselves. The
- * cookie is SameSite=Strict, so a browser sent here from another site may
- * not carry it; it then goes to the sign-in page.
- */
-async function hasDashboardSession(req: Request): Promise<boolean> {
-  const id = dashboardSessionIdOf(req);
-  if (!id) return false;
-  try {
-    return (await Container.get(UserSessionService).resolve(id, { renew: false })) !== null;
-  } catch {
-    return false;
   }
 }
 

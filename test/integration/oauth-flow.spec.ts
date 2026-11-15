@@ -442,17 +442,19 @@ describe('agent sign-in (OAuth) end to end', () => {
       expect((await consent(requestId, true)).status).to.equal(200);
     });
 
-    it('without a sign-in, consent is 401, and authorize sends the browser to sign in first', async () => {
+    it('authorize sends a browser with no sign-in to the consent page too, where consent is 401 until it signs in', async () => {
+      // The dashboard cookie is SameSite=Strict, so the browser an agent
+      // opens carries none: authorize can't tell who is signed in. The
+      // consent page's own requests carry it, and its route guard sends a
+      // signed-out visitor to sign in and back.
       const agent = new SpecAgent();
       await agentAuth(agent);
       const url = agent.authUrl!;
       const res = await request(origin).get(url.pathname + url.search);
       expect(res.status).to.equal(302);
-      const login = new URL(res.headers.location, origin);
-      expect(login.pathname).to.equal('/xenon/login');
-      const next = login.searchParams.get('next')!;
-      expect(next).to.match(/^\/oauth\/consent\/[A-Za-z0-9_-]+$/);
-      const requestId = next.split('/').pop()!;
+      const match = /^\/xenon\/oauth\/consent\/([A-Za-z0-9_-]+)$/.exec(res.headers.location);
+      expect(match, res.headers.location).to.not.equal(null);
+      const requestId = match![1];
 
       const unauthenticated = await request(origin).get(`/xenon/api/oauth/consent/${requestId}`);
       expect(unauthenticated.status).to.equal(401);
