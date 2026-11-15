@@ -8,6 +8,37 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## Xenon Control 0.5.0
+
+**Xenon Control has settings for the options Xenon gained since 2.18,
+trusted proxies among them.**
+
+Made for Xenon 2.37.0, and needs Appium 3.1.1 or newer. Profiles from 0.4.0
+carry over. With an older Xenon installed, the settings page shows that
+Xenon's own options, as before.
+
+### Settings
+
+- **Trusted proxies** (`trustProxy`, Network). Behind a reverse proxy, which
+  proxies may say who is signing in, so each person gets their own sign-in
+  limit. Xenon 2.37 counts sign-ins by the caller's address, so a lab behind
+  a proxy should set this.
+- **Keep iPhones ready between tests** (`keepIosStreamBetweenSessions`,
+  Tests). Leaves an iPhone's test runner going when a test ends, so the
+  next test starts several seconds sooner.
+- **Hide what tests type** (`maskInput`, Recording & history). Saves the text tests
+  type as `[masked]` in their steps on the dashboard.
+- **What the AI helper isn't sent** (`aiRedaction`, AI help). Hides emails, phone
+  numbers, card numbers, passwords or your own patterns from what Xenon sends
+  the AI helper, and can keep screenshots back.
+- Until Xenon is installed, the settings shown are Xenon 2.37.0's.
+
+### Look
+
+- **Shadows, corners and type sizes follow the dashboard's.** The shared
+  tokens gained the dashboard's surface levels, focus rings, type roles and
+  chart colours, so shadows in the launcher differ slightly from 0.4.0.
+
 ## 2.37.0
 
 **Phones in use are no longer freed or handed to a second session when two things happen at once.**
