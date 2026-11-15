@@ -1,5 +1,6 @@
 import { Service } from 'typedi';
 import { prisma } from '../../prisma';
+import { grantIsLive } from './grantLifetime';
 
 /** How long a grant found live is taken as live without asking the database again. */
 export const LIVE_GRANT_TTL_MS = 30_000;
@@ -13,7 +14,9 @@ export const REMEMBERED_GRANTS_MAX = 10_000;
  * kept:
  *
  * - A grant found live is taken as live for LIVE_GRANT_TTL_MS (30 s).
- * - A grant revoked or missing stays refused: neither comes back. A grant's
+ * - A grant revoked, lapsed (past its `expiresAt`, its maximum life or its
+ *   idle window: GrantStore's rule, grantIsLive) or missing stays refused:
+ *   none comes back. A grant's
  *   id is made with it, before any token names it, so a missing grant is one
  *   pruned after it ended.
  * - `revoked` (GrantStore.revoke, every revoke on this server) refuses the
@@ -68,13 +71,24 @@ export class RevokedGrants {
   }
 }
 
-/** A grant's first row (never a spent one), unrevoked. */
+/**
+ * A grant's first row (never a spent one), live by GrantStore's own rule
+ * (grantIsLive): unrevoked, and not past its `expiresAt`, its maximum life or
+ * its idle window. Through 2.37's review a lapsed grant not yet pruned still
+ * stood, so a day-long session token minted under it outlived the sign-in.
+ */
 async function grantStands(grantId: string): Promise<boolean> {
   const row = await prisma.mcpGrant.findUnique({
     where: { id: grantId },
-    select: { revokedAt: true, rotatedFromId: true },
+    select: {
+      revokedAt: true,
+      rotatedFromId: true,
+      expiresAt: true,
+      createdAt: true,
+      lastUsedAt: true,
+    },
   });
-  return !!row && row.rotatedFromId === null && row.revokedAt === null;
+  return !!row && row.rotatedFromId === null && grantIsLive(row, Date.now());
 }
 
 function remember<V>(map: Map<string, V>, key: string, value: V): void {
