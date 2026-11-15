@@ -550,6 +550,27 @@ exports.Prisma.ProjectScalarFieldEnum = {
   createdAt: 'createdAt'
 };
 
+exports.Prisma.McpClientScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  redirectUris: 'redirectUris',
+  createdAt: 'createdAt',
+  lastUsedAt: 'lastUsedAt'
+};
+
+exports.Prisma.McpGrantScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  clientId: 'clientId',
+  scopes: 'scopes',
+  tokenHash: 'tokenHash',
+  createdAt: 'createdAt',
+  lastUsedAt: 'lastUsedAt',
+  expiresAt: 'expiresAt',
+  revokedAt: 'revokedAt',
+  rotatedFromId: 'rotatedFromId'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -591,7 +612,9 @@ exports.Prisma.ModelName = {
   PasswordResetToken: 'PasswordResetToken',
   TeamMember: 'TeamMember',
   EventLog: 'EventLog',
-  Project: 'Project'
+  Project: 'Project',
+  McpClient: 'McpClient',
+  McpGrant: 'McpGrant'
 };
 
 /**

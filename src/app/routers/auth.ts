@@ -14,6 +14,7 @@ import { config } from '../../config';
 import { prisma } from '../../prisma';
 import { JwtKeyService } from '../../services/token/JwtKeyService';
 import { resolveMcpGrant, McpScopeError } from '../../services/token/mcpScopes';
+import { mcpTokenClaims } from '../../services/token/mcpTokenClaims';
 import { passwordResetMode } from '../../services/passwordResetMode';
 import { buildResetLink, resetEmail, resetLinkBase } from '../../services/passwordResetLink';
 import { mintedLifetimeSec } from '../../services/token/mintedLifetime';
@@ -70,17 +71,7 @@ export async function issueToken(
     // flat `scopes` claim so this token's REST power matches its MCP grant
     // (least privilege — an mcp token no longer carries the key's full flat set).
     const grant = resolveMcpGrant(auth.scopes, body.scopes);
-    const token = await svc.sign(
-      {
-        sub: auth.userId,
-        role: auth.role,
-        scopes: grant.flat.join(','),
-        teamId: auth.teamId ?? null,
-        scope: grant.granular.join(' '),
-        roles: grant.roles,
-      },
-      { audience, ttlSeconds: expiresIn },
-    );
+    const token = await svc.sign(mcpTokenClaims(auth, grant), { audience, ttlSeconds: expiresIn });
     // Session-token capability (spec §3 item 6 / R9): a sibling credential the
     // client injects as `xe:options.sessionToken` so the Appium createSession
     // interceptor can refuse tokenless direct-connect sessions when the gate is on.

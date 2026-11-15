@@ -38,6 +38,8 @@ const MODELS = [
   'annotation',
   'sessionMetric',
   'selectorEvent',
+  'mcpClient',
+  'mcpGrant',
 ] as const;
 
 let scratchCount = 0;
