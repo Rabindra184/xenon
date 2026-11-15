@@ -349,6 +349,28 @@ export class TracingService {
     if (this.activeSpans.get(id) === span) this.activeSpans.delete(id);
   }
 
+  /**
+   * The span of one MCP tool call (src/mcp/toolCall.ts), named for the tool,
+   * with the caller's user id and no arguments; undefined while tracing is
+   * off. The caller ends it with {@link endToolSpan}.
+   */
+  public startToolSpan(tool: string, userId: string): Span | undefined {
+    if (!this.sdk) return undefined;
+    return this.tracer.startSpan(`mcp ${tool}`, {
+      kind: SpanKind.SERVER,
+      attributes: { 'xenon.mcp.tool': tool, 'xenon.user_id': userId },
+    });
+  }
+
+  /** Ends a tool call's span: OK, or ERROR with what the tool answered. */
+  public endToolSpan(span: Span | undefined, outcome: string, error?: unknown) {
+    if (!span) return;
+    span.setAttribute('xenon.mcp.outcome', outcome);
+    if (error !== undefined) failSpan(span, error);
+    else span.setStatus({ code: SpanStatusCode.OK });
+    span.end();
+  }
+
   /** Whether this server exports spans (an OTLP trace URL is set and on). */
   public exportsTraces(): boolean {
     return this.sdk !== null;

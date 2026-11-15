@@ -6,7 +6,8 @@ import log from '../logger';
 import type { IPluginArgs } from '../interfaces/IPluginArgs';
 import { McpCaller, resolveMcpCaller } from './mcpCredential';
 import { toolsFor } from './toolRegistry';
-import { publicOrigin } from './publicOrigin';
+import { runTool } from './toolCall';
+import { publicOrigin, servesMcp } from './publicOrigin';
 import pkg from '../../package.json';
 
 const logger = log.scope('McpEndpoint');
@@ -29,7 +30,7 @@ const RESOURCE_METADATA_PATH = '/.well-known/oauth-protected-resource/xenon/mcp'
  * A node doesn't serve it: its phones are reached through its hub.
  */
 export function registerMcpEndpoint(router: Router, pluginArgs: IPluginArgs): void {
-  if (pluginArgs.hub !== undefined) return;
+  if (!servesMcp(pluginArgs)) return;
   router.all('/mcp', refuseOtherOrigins);
   router.post('/mcp', handlePost);
   router.all('/mcp', methodNotAllowed);
@@ -107,10 +108,7 @@ function serverFor(caller: McpCaller): McpServer {
         inputSchema: tool.params as any,
         annotations: tool.annotations,
       },
-      (async (args: unknown) => {
-        const result = await tool.run(args, caller);
-        return { content: [{ type: 'text', text: JSON.stringify(result) }] };
-      }) as any,
+      ((args: unknown) => runTool(tool.name, caller, () => tool.run(args, caller))) as any,
     );
   }
   return server;

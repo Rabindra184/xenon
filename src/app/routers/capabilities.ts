@@ -12,7 +12,7 @@ import { currentAiRedaction } from '../../services/AIService';
 import { describeAiRedaction } from '../../services/ai/aiRedaction';
 import { TracingService } from '../../services/TracingService';
 import { toolNames } from '../../mcp/toolRegistry';
-import { MCP_PATH } from '../../mcp/publicOrigin';
+import { MCP_PATH, servesMcp } from '../../mcp/publicOrigin';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const pkg = require('../../../package.json');
 
@@ -103,9 +103,12 @@ export function buildCapabilities() {
       // recording answers name each recording's phone the same way.
       phoneIdentity: { hostParameter: true, events: true },
       // The lab's tools for AI coding agents over MCP (src/mcp/mcpEndpoint.ts),
-      // served at `path` on a hub or standalone server, never on a node.
-      // `contractVersion` changes when a tool's name or arguments do.
-      mcpServer: { path: MCP_PATH, oauth: true, contractVersion: 1, tools: toolNames() },
+      // served at `path` on a hub or standalone server, never on a node, which
+      // doesn't report it. `contractVersion` changes when a tool's name or
+      // arguments do.
+      ...(servesMcp(Container.get(PluginContext).pluginArgs)
+        ? { mcpServer: { path: MCP_PATH, oauth: true, contractVersion: 1, tools: toolNames() } }
+        : {}),
     },
   };
 }

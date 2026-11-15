@@ -5,6 +5,15 @@ import { publicServerBase } from '../services/publicUrl';
 export const MCP_PATH = '/xenon/mcp';
 
 /**
+ * Whether this server serves `/xenon/mcp`: a hub or a standalone server
+ * does, a node (one started with `hub`) doesn't, since its phones are
+ * reached through its hub. registerMcpEndpoint and `/capabilities` both ask.
+ */
+export function servesMcp(pluginArgs: { hub?: unknown } | undefined): boolean {
+  return pluginArgs?.hub === undefined;
+}
+
+/**
  * The origin agents reach this server at: XENON_PUBLIC_URL's when it is set
  * (publicServerBase), else the request's scheme and host.
  *

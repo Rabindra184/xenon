@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../../prisma';
-import { buildCapabilities } from '../../app/routers/capabilities';
-import { defineTool, mcpScopesOf } from '../toolRegistry';
+import { defineTool, mcpScopesOf } from '../tool';
 
 /**
  * `xenon_lab_info`: the hub's version and what `/capabilities` reports, who
@@ -21,6 +20,9 @@ export const labInfoTool = defineTool({
   params: z.object({}),
   annotations: { readOnlyHint: true, destructiveHint: false },
   async run(_args, caller) {
+    // Loaded here, not at the top: `/capabilities` lists the tools, so a
+    // static import would make this module and the tool list load each other.
+    const { buildCapabilities } = await import('../../app/routers/capabilities');
     const { auth } = caller;
     const teamIds = auth.teamIds;
     const teams =

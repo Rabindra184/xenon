@@ -49,6 +49,7 @@ import { registerNodeSessionMetrics } from '../gateway/nodeSessionMetrics';
 import { registerNodeSessionDeviceLogs } from '../gateway/nodeSessionDeviceLogs';
 import { dashboardPluginMiddlewareFor } from './dashboardPluginLink';
 import { registerMcpEndpoint } from '../mcp/mcpEndpoint';
+import { serveToolsFrom } from '../mcp/invokeApi';
 
 const ASYNC_LOCK = new AsyncLock();
 
@@ -58,6 +59,10 @@ forwardAsyncErrors();
 const router = express.Router(),
   apiRouter = express.Router(),
   staticFilesRouter = express.Router();
+
+// The MCP tools run their REST routes through this router, in process
+// (src/mcp/invokeApi.ts): every route createRouter adds to it below.
+serveToolsFrom(apiRouter);
 
 // API is same-origin with the dashboard; block cross-origin browser callers.
 // Non-browser clients (curl, CLI, SDKs) send no Origin header and are unaffected.

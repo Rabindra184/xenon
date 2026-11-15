@@ -1,6 +1,8 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
+import { Container } from 'typedi';
 import { buildCapabilities } from '../../src/app/routers/capabilities';
+import { PluginContext } from '../../src/PluginContext';
 
 describe('capabilities payload', () => {
   it('reports version and the hub feature set', () => {
@@ -33,7 +35,17 @@ describe('capabilities payload', () => {
       },
       recording: { observer: true },
       phoneIdentity: { hostParameter: true, events: true },
-      mcpServer: { path: '/xenon/mcp', oauth: true, contractVersion: 1, tools: ['xenon_lab_info'] },
+      mcpServer: {
+        path: '/xenon/mcp',
+        oauth: true,
+        contractVersion: 1,
+        tools: [
+          'xenon_lab_info',
+          'xenon_list_devices',
+          'xenon_selector_health',
+          'xenon_healing_events',
+        ],
+      },
     });
   });
 
@@ -42,8 +54,24 @@ describe('capabilities payload', () => {
       path: '/xenon/mcp',
       oauth: true,
       contractVersion: 1,
-      tools: ['xenon_lab_info'],
+      tools: [
+        'xenon_lab_info',
+        'xenon_list_devices',
+        'xenon_selector_health',
+        'xenon_healing_events',
+      ],
     });
+  });
+
+  it("doesn't report mcpServer on a node, which doesn't serve /xenon/mcp", () => {
+    const context = Container.get(PluginContext);
+    const saved = context.pluginArgs;
+    context.pluginArgs = { ...saved, hub: 'http://hub.example:4723' };
+    try {
+      expect(buildCapabilities().features).to.not.have.property('mcpServer');
+    } finally {
+      context.pluginArgs = saved;
+    }
   });
 
   it('phoneIdentity says a phone can be named by udid and host, in requests and live events', () => {

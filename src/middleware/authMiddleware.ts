@@ -15,6 +15,7 @@ import {
   HubTokenUnavailableError,
 } from '../gateway/hubSessionToken';
 import { isLocalDeviceHost, localDeviceHosts } from '../device-managers/localDeviceHosts';
+import { mcpContextOf } from '../mcp/invokeApi';
 
 const SESSION_COOKIE = 'xenon_dashboard_session';
 
@@ -238,6 +239,25 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
   if (config.authDisabled === true) {
     req.auth = authDisabledAuth();
     req.apiKey = { id: 'auth-disabled', scopes: 'admin', rateLimit: 100_000 };
+    return next();
+  }
+
+  // An MCP tool's call to its REST route, made in process (invokeApi): its
+  // caller was checked by /xenon/mcp, with REST's own verifiers, and is kept
+  // on the request object under a symbol no network request can set. A key
+  // pair's caller gets req.apiKey too, as Path 1 gives it.
+  const preset = mcpContextOf(req);
+  if (preset) {
+    const { auth } = preset;
+    req.auth = auth;
+    if (auth.kind === 'api-key' && auth.apiKeyId) {
+      req.apiKey = {
+        id: auth.apiKeyId,
+        scopes: auth.scopes,
+        rateLimit: auth.rateLimit,
+        teamId: auth.teamId ?? null,
+      };
+    }
     return next();
   }
 
