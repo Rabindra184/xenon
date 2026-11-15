@@ -23,7 +23,15 @@ import { leaseKey } from './activeLeases';
 import { filledCount, maxMatching } from './memberMatch';
 import { LeaseQueue } from './LeaseQueue';
 import type { GiveUpOptions, MemberRequest, TryNowRequest, TryNowOutcome } from './LeaseQueue';
-import { endedData, goneReason, waiterEnd } from './leaseStatus';
+import {
+  agentLeaseColumns,
+  endedData,
+  goneReason,
+  LeaseEndReason,
+  LIVE_LEASE_STATUSES,
+  MCP_LEASE_DEFAULT_MS,
+  waiterEnd,
+} from './leaseStatus';
 import {
   GrantedBody,
   MemberWithDevice,
@@ -31,6 +39,8 @@ import {
   grantedBody,
   waitingBody,
 } from './leaseResponse';
+
+export { MCP_LEASE_DEFAULT_MS };
 
 export interface CreateLeaseRequest {
   /** One phone: a lease of one member. Send this or `members`, never both. */
@@ -54,6 +64,14 @@ export interface CreateLeaseRequest {
   callerTeamIds?: string[];
   buildId?: string;
   reason?: string;
+  /**
+   * An agent's lease (taken through /xenon/mcp): it needs no heartbeats and
+   * ends at `expiresAt`, on release, or when its grant is revoked. Set only
+   * from the request's MCP context (sdk-leases.ts), never from a body.
+   */
+  heartbeatFree?: boolean;
+  /** The sign-in grant an agent's lease was taken under (endLeasesOfGrant). */
+  grantId?: string;
 }
 
 /**
@@ -234,6 +252,13 @@ export class LeaseMemberRequired extends Error {
   }
 }
 
+/**
+ * The creators a lease records with no user behind them: `auth-disabled`
+ * (authDisabledAuth, every caller with auth disabled) and `anonymous` (no
+ * identity at all). Never an orphan of a deleted user's.
+ */
+const NO_ONES = new Set(['auth-disabled', 'anonymous']);
+
 @Service()
 export class LeaseService {
   private logger = log.scope('LeaseService');
@@ -323,6 +348,7 @@ export class LeaseService {
         reason: req.reason,
         heartbeatSeconds,
         tokenHash,
+        ...agentLeaseColumns(req),
       });
       if (outcome === 'busy') throw busy();
       if (outcome === 'unhealthy') {
@@ -366,6 +392,7 @@ export class LeaseService {
         callerTeamIds: req.callerTeamIds === undefined ? null : JSON.stringify(req.callerTeamIds),
         waitUntil: now + waitMs,
         durationMs,
+        ...agentLeaseColumns(req),
       },
     });
     // Never throws: a failed pass leaves the request waiting for the next.
@@ -696,41 +723,176 @@ export class LeaseService {
    * LeaseGone.
    */
   async release(leaseId: string, token: string): Promise<void> {
-    let lease = await this.loadProvenLease(leaseId, token);
+    const lease = await this.loadProvenLease(leaseId, token);
+    if (lease.status !== 'waiting' && lease.status !== 'active') throw this.gone(lease);
+    let writing = false;
+    try {
+      // The sweeper may have ended it since it was read ('already-ended'):
+      // that sweep released its members, and it is still a successful
+      // release, answered as one.
+      await this.endLease(lease, 'client_released', {
+        reread: () => this.loadProvenLease(leaseId, token),
+        onWrite: () => {
+          writing = true;
+        },
+      });
+    } catch (err) {
+      // A pass runs once the active lease's end was attempted, whatever
+      // came of it; not for a failure before that (giving up a waiter,
+      // reading it again, or finding it gone).
+      if (writing) this.queue.kick();
+      throw err;
+    }
+    // The phones it held or leased, and the head's place if it had it, go to
+    // the next waiter.
+    this.queue.kick();
+  }
+
+  /**
+   * Ends a live lease for `reason`, as a release does, with no token and no
+   * grant pass (the caller's). A waiting lease leaves the queue
+   * (LeaseQueue.giveUp: `expired`, its holds let go). An active one is
+   * written `released` only while it is still active, then every member is
+   * released (releaseLeaseMembers: its ports, here and on its phone's
+   * server, and its lease lock), the first failure thrown.
+   *
+   * 'already-ended' when the write found it no longer active (the sweeper or
+   * another end got there first, and released its members). A waiting lease
+   * that a pass granted meanwhile is read again (`reread`, the lease row with
+   * its members; by id when absent) and ended as granted; if by then it is
+   * neither, this throws LeaseGone for it. `onWrite` is called just before an
+   * active lease's end is written.
+   */
+  private async endLease(
+    lease: any,
+    reason: LeaseEndReason,
+    options: { reread?: () => Promise<any>; onWrite?: () => void } = {},
+  ): Promise<'ended' | 'already-ended'> {
+    const reread =
+      options.reread ??
+      (() => this.db.lease.findUnique({ where: { id: lease.id }, include: { members: true } }));
     if (lease.status === 'waiting') {
-      if ((await this.queue.giveUp(leaseId, { reason: 'client_released' })) === 'expired') {
-        // The phones it held, and the head's place if it had it, go to the next waiter.
-        this.queue.kick();
-        return;
-      }
-      // A pass granted it meanwhile: release it as granted.
-      lease = await this.loadProvenLease(leaseId, token);
+      if ((await this.queue.giveUp(lease.id, { reason })) === 'expired') return 'ended';
+      // A pass granted it meanwhile: end it as granted.
+      lease = await reread();
+      if (!lease) throw new LeaseGone('the lease is gone');
     }
     if (lease.status !== 'active') throw this.gone(lease);
-    try {
-      // Conditional: the sweeper may have ended it since it was read. Then
-      // that sweep released its members, and doing it again would free each
-      // member's ports on its phone's server twice. That is still a
-      // successful release, answered as one. Otherwise every member is
-      // released (releaseLeaseMembers), and the first failure answered.
-      const ended = await this.db.lease.updateMany({
-        where: { id: leaseId, status: 'active' },
-        data: endedData('released', 'client_released'),
-      });
-      if (ended?.count === 0) return;
-      await releaseLeaseMembers(
-        {
-          db: this.db,
-          store: this.store,
-          phoneServerPorts: this.phoneServerPorts,
-          logger: this.logger,
-        },
-        lease,
-        leaseMembersOf(lease),
+    options.onWrite?.();
+    const ended = await this.db.lease.updateMany({
+      where: { id: lease.id, status: 'active' },
+      data: endedData('released', reason),
+    });
+    if (ended?.count === 0) return 'already-ended';
+    await releaseLeaseMembers(
+      {
+        db: this.db,
+        store: this.store,
+        phoneServerPorts: this.phoneServerPorts,
+        logger: this.logger,
+      },
+      lease,
+      leaseMembersOf(lease),
+    );
+    return 'ended';
+  }
+
+  /**
+   * Ends every lease taken under the sign-in grant `grantId`, as a release
+   * does (endLease): a waiting one leaves the queue (`expired`, its holds let
+   * go), an active one is `released` and each member's ports freed and its
+   * lease lock dropped (`releaseLeaseLock`, which never frees a phone a
+   * session or hold still has, so a session started on the lease keeps its
+   * phone). `endReason` is `reason` either way. Answers how many it ended.
+   *
+   * Each end is written only while the lease is still live, so a lease its
+   * client released or the sweeper ended meanwhile is left as it is. A lease
+   * whose release fails after its end was written still counts: it has
+   * ended, and the failure is logged. Then a grant pass runs.
+   */
+  async endLeasesOfGrant(grantId: string, reason: 'grant_revoked'): Promise<number> {
+    const leases: any[] = await this.db.lease.findMany({
+      where: { grantId, status: { in: [...LIVE_LEASE_STATUSES] } },
+      include: { members: true },
+    });
+    return this.endEach(leases, reason, `grant ${grantId}`);
+  }
+
+  /**
+   * Ends the agents' leases taken under no grant (`heartbeatFree`, no
+   * `grantId`: a key pair or Basic credential on /xenon/mcp) whose creator
+   * (`actorId`, the creating key's id or user's id) is one of `actorIds`, as
+   * endLeasesOfGrant ends a grant's. With `orphans`, also those whose creator
+   * is now neither a user nor a key: a deleted user's keys go with them, so
+   * by then no row names whose they were. A lease of no one's (NO_ONES: auth
+   * disabled, or no identity) is never one. Answers how many it ended.
+   */
+  async endAgentLeasesOf(
+    actorIds: string[],
+    reason: 'user_not_active',
+    opts: { orphans?: boolean } = {},
+  ): Promise<number> {
+    const leases: any[] = await this.db.lease.findMany({
+      where: {
+        heartbeatFree: true,
+        grantId: null,
+        status: { in: [...LIVE_LEASE_STATUSES] },
+        ...(opts.orphans ? {} : { actorId: { in: actorIds } }),
+      },
+      include: { members: true },
+    });
+    let ending = leases;
+    if (opts.orphans) {
+      const named = new Set(actorIds);
+      const others = [...new Set(leases.map((l) => l.actorId).filter((id) => !named.has(id)))];
+      const known = new Set<string>();
+      if (others.length > 0) {
+        const [users, keys] = await Promise.all([
+          this.db.user.findMany({ where: { id: { in: others } }, select: { id: true } }),
+          this.db.apiKey.findMany({ where: { id: { in: others } }, select: { id: true } }),
+        ]);
+        for (const row of [...users, ...keys]) known.add(row.id);
+      }
+      ending = leases.filter(
+        (l) => named.has(l.actorId) || (!NO_ONES.has(l.actorId) && !known.has(l.actorId)),
       );
-    } finally {
-      this.queue.kick();
     }
+    return this.endEach(ending, reason, `user ${actorIds[0] ?? ''}`.trim());
+  }
+
+  /**
+   * Ends each of `leases`, as a release does (endLease): a waiting one leaves
+   * the queue (`expired`, its holds let go), an active one is `released` and
+   * each member's ports freed and its lease lock dropped. Each end is written
+   * only while the lease is still live, so one its client released or the
+   * sweeper ended meanwhile is left as it is. A lease whose release fails
+   * after its end was written still counts: it has ended, and the failure is
+   * logged. Then a grant pass runs.
+   */
+  private async endEach(leases: any[], reason: LeaseEndReason, whose: string): Promise<number> {
+    let ended = 0;
+    try {
+      for (const lease of leases) {
+        try {
+          if ((await this.endLease(lease, reason)) === 'ended') ended += 1;
+        } catch (err) {
+          // Ended by something else after it was read: nothing to do.
+          if (err instanceof LeaseGone) continue;
+          this.logger.warn(
+            `couldn't end lease ${lease.id} of ${whose} (${reason}): ${(err as Error)?.message ?? err}`,
+          );
+          // Its end was written before a member's release failed: it has ended.
+          const row = await this.db.lease
+            .findUnique({ where: { id: lease.id }, select: { endReason: true } })
+            .catch(() => null);
+          if (row?.endReason === reason) ended += 1;
+        }
+      }
+    } finally {
+      if (ended > 0) this.queue.kick();
+    }
+    if (ended > 0) this.logger.info(`ended ${ended} lease(s) of ${whose} (${reason})`);
+    return ended;
   }
 
   /**

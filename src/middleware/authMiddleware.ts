@@ -7,7 +7,7 @@ import { StreamTicketService } from '../services/token/StreamTicketService';
 import { AppDownloadTicketService } from '../services/token/AppDownloadTicketService';
 import { config } from '../config';
 import { computeTeamIds } from '../services/device-access/callerTeamIds';
-import { verifyBearerCredential, verifyKeyPairCredential } from './verifyCredential';
+import { grantIdOf, verifyBearerCredential, verifyKeyPairCredential } from './verifyCredential';
 import { PluginContext } from '../PluginContext';
 import {
   HUB_TOKEN_HEADER,
@@ -15,6 +15,7 @@ import {
   HubTokenUnavailableError,
 } from '../gateway/hubSessionToken';
 import { isLocalDeviceHost, localDeviceHosts } from '../device-managers/localDeviceHosts';
+import { mcpContextOf } from '../mcp/invokeApi';
 
 const SESSION_COOKIE = 'xenon_dashboard_session';
 
@@ -23,6 +24,68 @@ function keyExpiresAt(expiresAt: Date | string | null | undefined): number | und
   if (!expiresAt) return undefined;
   const ms = new Date(expiresAt).getTime();
   return Number.isNaN(ms) ? undefined : ms;
+}
+
+/** Who a request is, as `req.auth` holds it (src/types/express.d.ts). */
+export type AuthContext = NonNullable<Request['auth']>;
+
+/** The synthetic SUPER_ADMIN every caller is with auth disabled. */
+export function authDisabledAuth(): AuthContext {
+  return {
+    kind: 'api-key',
+    userId: 'auth-disabled',
+    role: 'SUPER_ADMIN',
+    scopes: 'admin',
+    rateLimit: 100_000,
+    teamIds: undefined,
+  };
+}
+
+/** The caller a verified key pair names (verifyKeyPairCredential). */
+export async function keyPairAuth(
+  verified: NonNullable<Awaited<ReturnType<typeof verifyKeyPairCredential>>>,
+): Promise<AuthContext> {
+  const { row, user } = verified;
+  const teamIds = await computeTeamIds({
+    role: user.role as any,
+    userId: user.id,
+    apiKeyTeamId: row.teamId,
+  });
+  return {
+    kind: 'api-key',
+    userId: user.id,
+    role: user.role as any,
+    scopes: row.scopes,
+    teamId: row.teamId ?? null,
+    apiKeyId: row.id,
+    rateLimit: row.rateLimit,
+    teamIds,
+    credentialExpiresAt: keyExpiresAt(row.expiresAt),
+  };
+}
+
+/** The caller a verified bearer token names (verifyBearerCredential). */
+export async function bearerAuth(
+  verified: NonNullable<Awaited<ReturnType<typeof verifyBearerCredential>>>,
+): Promise<AuthContext> {
+  const { payload, user } = verified;
+  const teamIds = await computeTeamIds({
+    role: user.role as any,
+    userId: user.id,
+    apiKeyTeamId: (payload.teamId as string | null) ?? null,
+  });
+  const grantId = grantIdOf(payload);
+  return {
+    ...(grantId !== undefined ? { grantId } : {}),
+    kind: 'bearer',
+    userId: user.id,
+    role: user.role as any,
+    scopes: String(payload.scopes ?? ''),
+    teamId: (payload.teamId as string | null) ?? null,
+    rateLimit: 300,
+    teamIds,
+    credentialExpiresAt: typeof payload.exp === 'number' ? payload.exp * 1000 : undefined,
+  };
 }
 
 // Role → scopes derivation. The same table is used in profile token creation
@@ -176,15 +239,27 @@ async function hubPortsCallerOf(req: Request): Promise<HubPortsCaller> {
 
 export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
   if (config.authDisabled === true) {
-    req.auth = {
-      kind: 'api-key',
-      userId: 'auth-disabled',
-      role: 'SUPER_ADMIN',
-      scopes: 'admin',
-      rateLimit: 100_000,
-      teamIds: undefined,
-    };
+    req.auth = authDisabledAuth();
     req.apiKey = { id: 'auth-disabled', scopes: 'admin', rateLimit: 100_000 };
+    return next();
+  }
+
+  // An MCP tool's call to its REST route, made in process (invokeApi): its
+  // caller was checked by /xenon/mcp, with REST's own verifiers, and is kept
+  // on the request object under a symbol no network request can set. A key
+  // pair's caller gets req.apiKey too, as Path 1 gives it.
+  const preset = mcpContextOf(req);
+  if (preset) {
+    const { auth } = preset;
+    req.auth = auth;
+    if (auth.kind === 'api-key' && auth.apiKeyId) {
+      req.apiKey = {
+        id: auth.apiKeyId,
+        scopes: auth.scopes,
+        rateLimit: auth.rateLimit,
+        teamId: auth.teamId ?? null,
+      };
+    }
     return next();
   }
 
@@ -222,23 +297,8 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
   if (headerAccessKey && headerToken) {
     const verified = await verifyKeyPairCredential(headerAccessKey, headerToken);
     if (!verified) return res.status(401).json({ error: 'invalid credentials' });
-    const { row, user } = verified;
-    const teamIds = await computeTeamIds({
-      role: user.role as any,
-      userId: user.id,
-      apiKeyTeamId: row.teamId,
-    });
-    req.auth = {
-      kind: 'api-key',
-      userId: user.id,
-      role: user.role as any,
-      scopes: row.scopes,
-      teamId: row.teamId ?? null,
-      apiKeyId: row.id,
-      rateLimit: row.rateLimit,
-      teamIds,
-      credentialExpiresAt: keyExpiresAt(row.expiresAt),
-    };
+    const { row } = verified;
+    req.auth = await keyPairAuth(verified);
     req.apiKey = { id: row.id, scopes: row.scopes, rateLimit: row.rateLimit, teamId: row.teamId ?? null };
     return next();
   }
@@ -264,22 +324,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       if (!verified) {
         return res.status(401).json({ error: 'invalid token' });
       }
-      const { payload, user } = verified;
-      const teamIds = await computeTeamIds({
-        role: user.role as any,
-        userId: user.id,
-        apiKeyTeamId: (payload.teamId as string | null) ?? null,
-      });
-      req.auth = {
-        kind: 'bearer',
-        userId: user.id,
-        role: user.role as any,
-        scopes: String(payload.scopes ?? ''),
-        teamId: (payload.teamId as string | null) ?? null,
-        rateLimit: 300,
-        teamIds,
-        credentialExpiresAt: typeof payload.exp === 'number' ? payload.exp * 1000 : undefined,
-      };
+      req.auth = await bearerAuth(verified);
       return next();
     } catch {
       return res.status(401).json({ error: 'invalid token' });

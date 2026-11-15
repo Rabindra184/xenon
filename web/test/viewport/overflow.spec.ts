@@ -1,17 +1,21 @@
 import { test, expect, Page } from '@playwright/test';
 
-// COVERAGE BOUNDARY: every route below is now hermetic. The 11 data routes
-// (overview, devices, builds, builds/:buildId, apps, selector-health,
-// selector-health with its panel open, teams, users, api-keys, notifications) have their
-// data endpoints route-mocked with deliberately WIDE/hostile payloads via
+// COVERAGE BOUNDARY: every route below is now hermetic, and so is the consent
+// page tested after them. AI agents and the consent page mock /auth/me as a
+// signed-in user (see AGENTS_ROUTE). The 16 data routes (overview, devices,
+// devices?view=table, recordings, recordings/:groupId, builds, builds/:buildId,
+// a session's page, apps, selector-health, selector-health with its panel
+// open, AI agents, teams, users, api-keys, notifications) have their data
+// endpoints route-mocked with deliberately WIDE/hostile payloads via
 // ROUTE_DATA_MOCKS, and a per-route ROUTE_CONTENT_CHECKS assertion proves the
 // route's canonical wide content actually mounted (not an empty-state div) —
 // so the overflow scan below can no longer pass vacuously on a zero-row table.
 // The control route keeps its own dedicated device mock + 11-button toolbar
-// test (unchanged). The 3 static-form routes (maintenance, settings,
-// ai-settings) render a fixed layout independent of any list data — the
-// existing shell-nav check is already non-vacuous for them, so they have no
-// entry in either map and are covered by the shell check alone.
+// test (unchanged); the Logs tab and the chooser have their own mocks and
+// checks. The 3 static-form routes (maintenance, settings, ai-settings) render
+// a fixed layout independent of any list data — the existing shell-nav check
+// is already non-vacuous for them, so they have no entry in either map and are
+// covered by the shell check alone. 22 routes in all.
 
 // Real Android device JSON shape, per .superpowers/sdd/task-2-brief.md. Only the
 // fields the control page actually reads matter, but we keep the full shape so
@@ -493,6 +497,99 @@ async function mockLogStream(page: Page) {
   });
 }
 
+// AI agents (/agents) and an agent's consent page. The suite runs against an
+// auth-disabled server, where /auth/me is the synthetic admin: AgentsPage then
+// skips the connected-agents list and the consent GET answers 404, so both
+// mock /auth/me as a signed-in user. Hostile on purpose: a long hub address
+// (every command repeats it), an agent name with no spaces to break at, a
+// redirect URI longer than a line.
+const AGENTS_ROUTE = '/xenon/agents';
+const CONSENT_ROUTE = '/xenon/oauth/consent/req-mock-1';
+const LONG_HUB = 'https://xenon-device-lab.emea-regression.engineering.example.com';
+const UNBROKEN_AGENT_NAME =
+  'claude-code-on-the-shared-regression-workstation-desk-14-rack-b-' + 'x'.repeat(40);
+const ALL_MCP_SCOPES = [
+  'appium:use',
+  'xenon:analytics:read',
+  'xenon:devices:lock',
+  'xenon:devices:read',
+  'xenon:execute',
+  'xenon:recordings',
+];
+const SIGNED_IN_ME = {
+  userId: 'u-mock-1',
+  email: 'firstname.middlename.lastname@engineering-lab.example.com',
+  name: 'Firstname Middlename Lastname',
+  role: 'SUPER_ADMIN',
+  accessKey: 'xen_mock',
+  scopes: 'admin,devices,sessions,read',
+  teamId: null,
+  kind: 'user-session',
+  teams: [],
+  authDisabled: false,
+};
+
+async function mockSignedIn(page: Page) {
+  await page.route('**/xenon/api/auth/me', (route) => route.fulfill({ json: SIGNED_IN_ME }));
+}
+
+async function mockAgents(page: Page) {
+  await mockSignedIn(page);
+  // The server's own answer, with this hub's MCP address made long: anything
+  // else on the page that reads /capabilities still gets the real features.
+  await page.route('**/xenon/api/capabilities', async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    json.features = {
+      ...json.features,
+      mcpServer: {
+        path: '/xenon/mcp',
+        url: `${LONG_HUB}/xenon/mcp`,
+        oauth: true,
+        contractVersion: 1,
+        tools: ['xenon_lab_info', 'xenon_list_devices'],
+      },
+    };
+    await route.fulfill({ response, json });
+  });
+  await page.route('**/xenon/api/oauth/grants', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'g-mock-1',
+          clientName: UNBROKEN_AGENT_NAME,
+          scopes: ALL_MCP_SCOPES,
+          createdAt: '2026-11-15T09:00:00.000Z',
+          lastUsedAt: '2026-11-15T10:00:00.000Z',
+        },
+        {
+          id: 'g-mock-2',
+          clientName: 'Codex',
+          scopes: ['appium:use', 'xenon:devices:read'],
+          createdAt: '2026-11-14T09:00:00.000Z',
+          lastUsedAt: null,
+        },
+      ],
+    }),
+  );
+}
+
+async function mockConsent(page: Page) {
+  await mockSignedIn(page);
+  await page.route('**/xenon/api/oauth/consent/*', (route) =>
+    route.fulfill({
+      json: {
+        requestId: 'req-mock-1',
+        client: { id: 'https://agent.example.com/client.json', name: UNBROKEN_AGENT_NAME },
+        hub: LONG_HUB,
+        redirectUri: `http://127.0.0.1:53682/oauth/callback/${'segment/'.repeat(12)}done`,
+        scopes: ALL_MCP_SCOPES,
+        expiresAt: '2026-11-15T10:10:00.000Z',
+      },
+    }),
+  );
+}
+
 const ROUTES = [
   '/xenon/overview',
   '/xenon/devices',
@@ -508,6 +605,7 @@ const ROUTES = [
   '/xenon/apps',
   '/xenon/selector-health',
   SH_PANEL_ROUTE,
+  AGENTS_ROUTE,
   '/xenon/settings',
   '/xenon/settings/teams',
   '/xenon/settings/users',
@@ -1062,6 +1160,7 @@ ROUTE_DATA_MOCKS[`/xenon/builds/${BUILD_ID}/sessions/${WIDE_SESSION_ID}`] = mock
 ROUTE_DATA_MOCKS['/xenon/selector-health'] = mockSelectorHealth;
 ROUTE_DATA_MOCKS[SH_PANEL_ROUTE] = mockSelectorHealth;
 ROUTE_DATA_MOCKS[LOGS_ROUTE] = mockLogStream;
+ROUTE_DATA_MOCKS[AGENTS_ROUTE] = mockAgents;
 
 const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
   '/xenon/overview': async (page) => {
@@ -1190,6 +1289,19 @@ const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
     await expect(page.locator('.webhook-row-card')).not.toHaveCount(0);
   },
 };
+// AI agents: a row per agent, each command or config entry carrying the long
+// hub address (Claude Desktop's row is a note), and the connected agents' rows
+// (not the "no agent yet" placeholder).
+ROUTE_CONTENT_CHECKS[AGENTS_ROUTE] = async (page) => {
+  await expect(page.locator('ul[aria-labelledby="agent-commands"] > li')).toHaveCount(7);
+  await expect(page.locator('ul[aria-labelledby="agent-commands"] code').first()).toContainText(
+    LONG_HUB,
+  );
+  await expect(
+    page.locator('ul[aria-labelledby="agent-commands"] code', { hasText: LONG_HUB }),
+  ).toHaveCount(6);
+  await expect(page.locator('table[aria-labelledby="connected-agents"] tbody tr')).toHaveCount(2);
+};
 // The chooser: one link per phone of the udid, and no phone opened.
 ROUTE_CONTENT_CHECKS[CHOOSER_ROUTE] = async (page) => {
   await expect(
@@ -1206,6 +1318,49 @@ ROUTE_CONTENT_CHECKS[LOGS_ROUTE] = async (page) => {
   ).not.toHaveCount(0);
   await expect(page.getByRole('group', { name: 'Log levels' })).toBeVisible();
 };
+
+/**
+ * The elements that escape the viewport on either side, worst first (at most
+ * five), each measured by the part of it on screen: see the comment in the
+ * overflow test below.
+ */
+function escapingElements(page: Page) {
+  return page.evaluate(() => {
+    const vw = window.innerWidth;
+    const visible = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      let left = r.left;
+      let right = r.right;
+      for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+        if (getComputedStyle(a).overflowX === 'visible') continue;
+        const c = a.getBoundingClientRect();
+        left = Math.max(left, c.left);
+        right = Math.min(right, c.right);
+      }
+      return { width: right - left, left, right };
+    };
+    return Array.from(document.querySelectorAll('body *'))
+      .map((el) => ({ el, r: visible(el) }))
+      .filter((x) => x.r.width > 0 && (x.r.right > vw + 1 || x.r.left < -1))
+      .map((x) => ({
+        el: x.el,
+        rightOverflowPx: x.r.right > vw + 1 ? Math.round(x.r.right - vw) : 0,
+        leftOverflowPx: x.r.left < -1 ? Math.round(-x.r.left) : 0,
+      }))
+      .sort(
+        (a, b) =>
+          Math.max(b.rightOverflowPx, b.leftOverflowPx) -
+          Math.max(a.rightOverflowPx, a.leftOverflowPx),
+      )
+      .slice(0, 5)
+      .map((x) => ({
+        tag: (x.el as HTMLElement).tagName,
+        cls: ((x.el as HTMLElement).className || '').toString().slice(0, 60),
+        rightOverflowPx: x.rightOverflowPx,
+        leftOverflowPx: x.leftOverflowPx,
+      }));
+  });
+}
 
 for (const width of WIDTHS) {
   for (const route of ROUTES) {
@@ -1250,41 +1405,7 @@ for (const width of WIDTHS) {
       // isn't, such as the rest of a `truncate` line behind its ellipsis. The
       // ancestor is measured too, so a clipping box that itself escapes still
       // fails. <body> is skipped: its overflow:hidden is what hides every escape.
-      const offenders = await page.evaluate(() => {
-        const vw = window.innerWidth;
-        const visible = (el: Element) => {
-          const r = el.getBoundingClientRect();
-          let left = r.left;
-          let right = r.right;
-          for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
-            if (getComputedStyle(a).overflowX === 'visible') continue;
-            const c = a.getBoundingClientRect();
-            left = Math.max(left, c.left);
-            right = Math.min(right, c.right);
-          }
-          return { width: right - left, left, right };
-        };
-        return Array.from(document.querySelectorAll('body *'))
-          .map((el) => ({ el, r: visible(el) }))
-          .filter((x) => x.r.width > 0 && (x.r.right > vw + 1 || x.r.left < -1))
-          .map((x) => ({
-            el: x.el,
-            rightOverflowPx: x.r.right > vw + 1 ? Math.round(x.r.right - vw) : 0,
-            leftOverflowPx: x.r.left < -1 ? Math.round(-x.r.left) : 0,
-          }))
-          .sort(
-            (a, b) =>
-              Math.max(b.rightOverflowPx, b.leftOverflowPx) -
-              Math.max(a.rightOverflowPx, a.leftOverflowPx),
-          )
-          .slice(0, 5)
-          .map((x) => ({
-            tag: (x.el as HTMLElement).tagName,
-            cls: ((x.el as HTMLElement).className || '').toString().slice(0, 60),
-            rightOverflowPx: x.rightOverflowPx,
-            leftOverflowPx: x.leftOverflowPx,
-          }));
-      });
+      const offenders = await escapingElements(page);
 
       expect(
         offenders,
@@ -1306,6 +1427,37 @@ for (const width of WIDTHS) {
       await (ROUTE_CONTENT_CHECKS[route]?.(page) ?? Promise.resolve());
     });
   }
+}
+
+// An agent's consent page renders in AuthShell, not the dashboard's shell, so
+// it has no sidebar for the shell check above (or an account menu): it gets a
+// test of its own. The gate is its own content: the agent's name in the
+// heading, the six scopes, and Allow beside Deny.
+for (const width of WIDTHS) {
+  test(`no overflow at ${width}px on ${CONSENT_ROUTE}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await mockConsent(page);
+    await page.goto(CONSENT_ROUTE);
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.getByRole('heading', { name: /to use Xenon\?$/ })).toBeVisible();
+    await expect(page.locator('ul[aria-labelledby="consent-scopes"] > li')).toHaveCount(6);
+    await expect(page.getByRole('button', { name: 'Allow' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Deny' })).toBeVisible();
+
+    const offenders = await escapingElements(page);
+    expect(
+      offenders,
+      `Elements escape the viewport at ${width}px on ${CONSENT_ROUTE}:\n` +
+        offenders
+          .map(
+            (o) =>
+              `  ${o.tag}.${o.cls} escapes right by ${o.rightOverflowPx}px, ` +
+              `left by ${o.leftOverflowPx}px`,
+          )
+          .join('\n'),
+    ).toEqual([]);
+  });
 }
 
 // PageHeader's action button is styled by page-header.css, which loads with

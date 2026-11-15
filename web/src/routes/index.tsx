@@ -44,6 +44,7 @@ const ProfilePage = lazy(() => import('../pages/profile/profile-page'));
 const UsersPage = lazy(() => import('../pages/users'));
 const RecordingsPage = lazy(() => import('../components/recordings/RecordingsPage'));
 const RecordingPage = lazy(() => import('../components/recordings/RecordingPage'));
+const AgentsPage = lazy(() => import('../components/agents/AgentsPage'));
 
 const LoadingFallback = () => (
   <div className="flex items-center justify-center gap-2 h-full text-xs text-[var(--text-dim)]">
@@ -92,6 +93,7 @@ export const AppRoutes: React.FC = () => (
         <Route path="/recordings" element={<RecordingsPage />} />
         <Route path="/recordings/:groupId" element={<RecordingPage />} />
         <Route path="/runbooks/:category" element={<RunbookPage />} />
+        <Route path="/agents" element={<AgentsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="*" element={<Navigate to="/overview" replace />} />
       </Routes>

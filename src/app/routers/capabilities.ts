@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Request, Router } from 'express';
 import { sessionTokenGateEnabled } from '../../services/sessionTokenGate';
 import { commandAuthEnabled } from '../../middleware/commandAuth';
 import { Container } from 'typedi';
@@ -11,6 +11,8 @@ import { tokenLogFilterOn } from '../../services/logging/tokenLogFilter';
 import { currentAiRedaction } from '../../services/AIService';
 import { describeAiRedaction } from '../../services/ai/aiRedaction';
 import { TracingService } from '../../services/TracingService';
+import { toolNames } from '../../mcp/toolRegistry';
+import { MCP_PATH, mcpResourceUrl, servesMcp } from '../../mcp/publicOrigin';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const pkg = require('../../../package.json');
 
@@ -26,7 +28,13 @@ function leasing(): { host: true; nodePhones: boolean; reason?: string } {
     : { host: true, nodePhones: false, reason: NODE_CREDENTIALS_MISSING };
 }
 
-export function buildCapabilities() {
+/**
+ * `req`, when answering one: `mcpServer.url` is then the MCP endpoint as
+ * agents name it (XENON_PUBLIC_URL's origin, else the request's), the URL
+ * the dashboard's AI agents page gives them. Without one (xenon_lab_info,
+ * specs) there is no url.
+ */
+export function buildCapabilities(req?: Request) {
   return {
     version: String(pkg.version),
     // Where this server's WebDriver API lives ('' is the root), as
@@ -100,12 +108,29 @@ export function buildCapabilities() {
       // phone's udid name its host beside it (real-time-events.md); the
       // recording answers name each recording's phone the same way.
       phoneIdentity: { hostParameter: true, events: true },
+      // The lab's tools for AI coding agents over MCP (src/mcp/mcpEndpoint.ts),
+      // served at `path` on a hub or standalone server, never on a node, which
+      // doesn't report it. `contractVersion` changes when a tool's name or
+      // arguments do.
+      ...(servesMcp(Container.get(PluginContext).pluginArgs)
+        ? {
+            mcpServer: {
+              path: MCP_PATH,
+              ...(req ? { url: mcpResourceUrl(req) } : {}),
+              // Browser sign-in for agents: none with auth disabled, where
+              // the tools need no credential and the sign-in routes 404.
+              oauth: config.authDisabled !== true,
+              contractVersion: 1,
+              tools: toolNames(),
+            },
+          }
+        : {}),
     },
   };
 }
 
 export function capabilitiesRouter(): Router {
   const r = Router();
-  r.get('/', (_req, res) => res.json(buildCapabilities()));
+  r.get('/', (req, res) => res.json(buildCapabilities(req)));
   return r;
 }

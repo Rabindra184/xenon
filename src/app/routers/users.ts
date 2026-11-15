@@ -22,6 +22,7 @@ import {
   resetLinkBase,
 } from '../../services/passwordResetLink';
 import log from '../../logger';
+import { refuseGrantBound } from '../../middleware/refuseGrantBound';
 
 const auditLog = log.scope('Users');
 
@@ -52,7 +53,9 @@ export function usersRouter(): Router {
     res.json(users);
   });
 
-  r.post('/', async (req, res) => {
+  // Making an account answers its temporary password, and a reset link signs
+  // in as its user: neither for an agent's sign-in (refuseGrantBound).
+  r.post('/', refuseGrantBound, async (req, res) => {
     const auth = getAuth(req);
     const { email, name, role, password } = req.body as {
       email?: string;
@@ -154,7 +157,7 @@ export function usersRouter(): Router {
   // An emailed link points at XENON_PUBLIC_URL only, never the request's
   // Host: the admin's request could name any host, and the user would get a
   // genuine Xenon email sending their token there.
-  r.post('/:id/reset-link', async (req, res) => {
+  r.post('/:id/reset-link', refuseGrantBound, async (req, res) => {
     const auth = getAuth(req);
     const targetId = req.params.id;
     try {

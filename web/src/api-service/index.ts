@@ -537,4 +537,87 @@ export default class XenonApiService {
     const blob = await resp.blob();
     return { blob, filename };
   }
+
+  // --- Agent sign-in (OAuth for /xenon/mcp) -------------------------------
+
+  /**
+   * The agent sign-in waiting for this user's answer, as the consent page
+   * shows it. `status` is the server's answer when there is none to show:
+   * 404 (unknown, answered or expired) or 401 (signed out meanwhile).
+   */
+  public static async getOAuthConsent(
+    requestId: string,
+  ): Promise<{ ok: true; request: OAuthConsentRequest } | { ok: false; status: number }> {
+    const res = await fetch(`/xenon/api/oauth/consent/${encodeURIComponent(requestId)}`, {
+      credentials: 'include',
+    });
+    if (!res.ok) return { ok: false, status: res.status };
+    return { ok: true, request: (await res.json()) as OAuthConsentRequest };
+  }
+
+  /** Allow or deny it, once: where the browser goes back to the agent. Rejects on a refusal. */
+  public static answerOAuthConsent(
+    requestId: string,
+    allow: boolean,
+  ): Promise<{ redirectTo: string }> {
+    return apiClient.makePOSTRequest(
+      `/oauth/consent/${encodeURIComponent(requestId)}`,
+      {},
+      { allow },
+      { credentials: 'include' },
+    );
+  }
+
+  /**
+   * The agents this user has signed in, most recently used first; null when
+   * this server signs no agents in (the route answers 404: auth disabled, or
+   * a node). Throws on any other failure, which says nothing about that.
+   */
+  public static async getAgentSignIns(): Promise<AgentSignIn[] | null> {
+    const res = await fetch('/xenon/api/oauth/grants', { credentials: 'include' });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`Couldn't load the connected agents (${res.status})`);
+    const body = await res.json();
+    if (!Array.isArray(body)) throw new Error("The server's answer wasn't a list");
+    return body as AgentSignIn[];
+  }
+
+  /** Sign one out: its tokens stop working at once. */
+  public static revokeAgentSignIn(id: string) {
+    return apiClient.makeDELETERequest(`/oauth/grants/${encodeURIComponent(id)}`);
+  }
+
+  /**
+   * This server's tools for coding agents (`features.mcpServer` in
+   * `/capabilities`): `url` is the address agents are given. Null when it
+   * serves none (a node). Throws when it can't be asked.
+   */
+  public static async getMcpServer(): Promise<{ url?: string } | null> {
+    const res = await fetch('/xenon/api/capabilities', { credentials: 'include' });
+    if (!res.ok) throw new Error(`Couldn't read this server's features (${res.status})`);
+    const body = await res.json();
+    const server = body?.features?.mcpServer;
+    return server && typeof server === 'object' ? (server as { url?: string }) : null;
+  }
+}
+
+export interface OAuthConsentRequest {
+  requestId: string;
+  /** The agent's name, as whoever registered it chose it. */
+  client: { id: string; name: string };
+  /** This server's address. */
+  hub: string;
+  /** Where the browser goes back to the agent after the answer. */
+  redirectUri: string;
+  /** What this user would let the agent do: what it asked for, cut to the user's role. */
+  scopes: string[];
+  expiresAt: string;
+}
+
+export interface AgentSignIn {
+  id: string;
+  clientName: string;
+  scopes: string[];
+  createdAt: string;
+  lastUsedAt: string | null;
 }

@@ -13,12 +13,25 @@ export type BasicCredential =
   | { kind: 'none' }
   /** A Basic header that isn't `base64(key:token)` with both parts. */
   | { kind: 'unreadable' }
-  | { kind: 'pair'; accessKey: string; token: string };
+  | { kind: 'pair'; accessKey: string; token: string }
+  /** The user SESSION_TOKEN_BASIC_USER: the password is a `xenon-session` token. */
+  | { kind: 'session-token'; token: string };
+
+/**
+ * The Basic user that says the password is a `xenon-session` token (the
+ * `xe:options.sessionToken` capability), not an access key's token. It is
+ * what xenon_session_capabilities puts in the `remoteServerUrl` it gives an
+ * agent when per-command auth is on: appium-mcp sends no headers after the
+ * create, only the URL's user info, so the session token rides there. No
+ * access key is spelled this way (they are generated), so the two can't be
+ * confused.
+ */
+export const SESSION_TOKEN_BASIC_USER = 'xenon-session';
 
 const BASIC = /^Basic\s+(\S+)\s*$/i;
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
-/** The key pair in an `Authorization` header, if it is a Basic one. */
+/** The key pair, or session token, in an `Authorization` header, if it is a Basic one. */
 export function readBasicCredential(authorization: unknown): BasicCredential {
   if (typeof authorization !== 'string') return { kind: 'none' };
   if (!/^Basic(\s|$)/i.test(authorization)) return { kind: 'none' };
@@ -31,7 +44,10 @@ export function readBasicCredential(authorization: unknown): BasicCredential {
   const decoded = Buffer.from(encoded, 'base64').toString('utf8');
   const colon = decoded.indexOf(':');
   if (colon <= 0 || colon === decoded.length - 1) return { kind: 'unreadable' };
-  return { kind: 'pair', accessKey: decoded.slice(0, colon), token: decoded.slice(colon + 1) };
+  const user = decoded.slice(0, colon);
+  const password = decoded.slice(colon + 1);
+  if (user === SESSION_TOKEN_BASIC_USER) return { kind: 'session-token', token: password };
+  return { kind: 'pair', accessKey: user, token: password };
 }
 
 /**
@@ -43,11 +59,14 @@ export function readBasicCredential(authorization: unknown): BasicCredential {
  */
 export class BasicCredentialRefused extends Error {
   readonly status = 401;
-  constructor(readonly reason: 'unreadable' | 'invalid') {
+  constructor(readonly reason: 'unreadable' | 'invalid' | 'invalid-session-token') {
     super(
       reason === 'unreadable'
         ? "The hub URL's credentials can't be read: give it as http://ACCESS_KEY:TOKEN@host:port/..."
-        : "The access key and token in the hub URL aren't valid, or their user isn't active.",
+        : reason === 'invalid'
+          ? "The access key and token in the hub URL aren't valid, or their user isn't active."
+          : "The session token in the hub URL isn't valid or has expired, or its user isn't " +
+            'active. Get a new one from xenon_session_capabilities.',
     );
     this.name = 'BasicCredentialRefused';
   }

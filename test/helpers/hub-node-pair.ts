@@ -42,6 +42,8 @@ const quiet = { info: () => undefined, warn: () => undefined, error: () => undef
 export interface HubAndNode {
   /** The node's origin, once booted. */
   readonly nodeOrigin: string;
+  /** The node's Express app (Appium's own), once booted. */
+  readonly nodeApp: any;
   /** Starts the hub (its public keys only) and the node, its phone `phone-1`. */
   boot(nodeArgs?: Record<string, unknown>): Promise<void>;
   /** A session on the node's phone, created as the hub creates it, with `caps` added. */
@@ -75,6 +77,7 @@ export function useHubAndNode(scratch: ScratchDatabase, services: unknown[] = []
   let authDisabledBefore: boolean;
   let commandAuthBefore: string | undefined;
   let nodeOrigin = '';
+  let nodeApp: any;
 
   before(async () => {
     appiumLogs = quietAppiumLogs();
@@ -175,6 +178,7 @@ export function useHubAndNode(scratch: ScratchDatabase, services: unknown[] = []
       cliArgs: { basePath: '/node' },
       serverUpdaters: [
         (app: any) => {
+          nodeApp = app;
           registerSessionGateway(
             app,
             { basePath: '/node' },
@@ -254,6 +258,9 @@ export function useHubAndNode(scratch: ScratchDatabase, services: unknown[] = []
   return {
     get nodeOrigin() {
       return nodeOrigin;
+    },
+    get nodeApp() {
+      return nodeApp;
     },
     boot,
     nodeSession,

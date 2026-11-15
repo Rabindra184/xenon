@@ -98,6 +98,11 @@ Both are opened with a ticket from \`POST /api/control/{udid}/stream/ticket\`. S
   tags: [
     { name: 'Health & Ops', description: 'Liveness, version, metrics and server information.' },
     { name: 'Authentication', description: 'Sign-in, sign-out, password reset and tokens.' },
+    {
+      name: 'Agent sign-in',
+      description:
+        'How an AI agent signs in to `/mcp` in the browser (OAuth 2.1): registration, authorize, consent, tokens and revocation. Discovery is on the server root, outside `/xenon`: `/.well-known/oauth-protected-resource/xenon/mcp` and `/.well-known/oauth-authorization-server`.',
+    },
     { name: 'Profile', description: 'Your own account: API tokens and access key.' },
     { name: 'Users', description: 'User accounts. Admin only.' },
     { name: 'Teams', description: 'Teams, their members and the devices they own.' },
@@ -140,6 +145,10 @@ Both are opened with a ticket from \`POST /api/control/{udid}/stream/ticket\`. S
     { name: 'Webhooks', description: 'Where Xenon sends its events.' },
     { name: 'Configuration', description: 'Server settings, including AI providers.' },
     { name: 'Admin', description: 'Operations views for administrators.' },
+    {
+      name: 'MCP',
+      description: "The lab's tools for AI coding agents, over the Model Context Protocol.",
+    },
   ],
   components: {
     schemas: {

@@ -38,7 +38,7 @@ import {
   getXenonCapabilities,
   XENON_CAPABILITIES,
 } from '../XenonCapabilityManager';
-import { resolveSessionIdentity } from './session/sessionIdentity';
+import { resolveSessionIdentity, sessionTokenGrantsSessions } from './session/sessionIdentity';
 import { leaseIdOf, sessionLeaseIdOf } from './lease/leaseSessionCaps';
 import { SessionCredentials, takeSessionCredentials } from './session/sessionCredentials';
 import { capsForNode } from './session/nodeCreateCaps';
@@ -109,20 +109,15 @@ interface CredentialOwner {
 
 type LeaseCredential =
   | { kind: 'api-key'; scopes: string; user: CredentialOwner; teamId: string | null }
-  | { kind: 'session-token'; scopes: string; user: CredentialOwner; teamId: string | null }
+  | {
+      kind: 'session-token';
+      scopes: string;
+      user: CredentialOwner;
+      teamId: string | null;
+      /** The agent's sign-in grant the token was minted under (its `gid`): never an override. */
+      grantId?: string;
+    }
   | { kind: 'none' };
-
-/**
- * A session token admits a session only with the `sessions` scope, as a key
- * pair does. Tokens minted before this check carry no `scopes` claim, and
- * POST /auth/token gave one to any credential, a read-only one included:
- * they are refused too.
- */
-function sessionTokenGrantsSessions(scopes: unknown): boolean {
-  if (typeof scopes !== 'string') return false;
-  const owned = scopes.split(',').map((s) => s.trim());
-  return owned.includes('sessions') || owned.includes('admin');
-}
 
 const SESSION_TOKEN_LACKS_SCOPE =
   'session rejected: xe:options.sessionToken carries no `sessions` scope; tokens minted by ' +
@@ -951,8 +946,12 @@ export class SessionLifecycleService {
 
     const { ApiKeyService } = await import('./ApiKeyService');
     const svc = Container.get(ApiKeyService);
-    const { verifyKeyPairCredential, verifySessionTokenCredential, isWrongSessionToken } =
-      await import('../middleware/verifyCredential');
+    const {
+      verifyKeyPairCredential,
+      verifySessionTokenCredential,
+      isWrongSessionToken,
+      grantIdOf,
+    } = await import('../middleware/verifyCredential');
 
     // xe:options.{accessKey, token} — the only key-pair credential shape.
     // Checked by REST's rule (verifyKeyPairCredential): a live key whose owner
@@ -974,6 +973,14 @@ export class SessionLifecycleService {
       this.logger.warn('Rejecting session: the key pair in the hub URL is not valid');
       throw new BasicCredentialRefused('invalid');
     }
+    // A session token as the hub URL's password (user `xenon-session`): what
+    // xenon_session_capabilities gives an agent with per-command auth on.
+    // It stands for `xe:options.sessionToken` when the caps carry none (the
+    // capabilities' own credential is present first, so it decides). Like a
+    // Basic key pair, one that doesn't verify refuses the create (below).
+    const basicToken =
+      basic?.kind === 'session-token' && !credentials.sessionToken ? basic.token : undefined;
+    if (basicToken) credentials = { ...credentials, sessionToken: basicToken };
 
     // The session token, verified once for both the gate and attribution, by
     // REST's rule too: a live signature and an ACTIVE subject, looked up now.
@@ -988,9 +995,17 @@ export class SessionLifecycleService {
     // is not that: it refuses the create here, as a key whose owner can't be
     // looked up does, rather than run the session with no owner.
     if (!verifiedPair && credentials.sessionToken) {
-      await verifyToken(credentials.sessionToken).catch((err: unknown) => {
-        if (!isWrongSessionToken(err)) throw err;
-      });
+      const wrong = await verifyToken(credentials.sessionToken).then(
+        () => false,
+        (err: unknown) => {
+          if (!isWrongSessionToken(err)) throw err;
+          return true;
+        },
+      );
+      if (wrong && basicToken) {
+        this.logger.warn('Rejecting session: the session token in the hub URL is not valid');
+        throw new BasicCredentialRefused('invalid-session-token');
+      }
     }
 
     const { assertSessionTokenGate, sessionTokenGateEnabled } = await import('./sessionTokenGate');
@@ -1016,6 +1031,7 @@ export class SessionLifecycleService {
       let tokenTeamId: string | null = null;
       let tokenScopes: unknown;
       let tokenOwner: CredentialOwner | undefined;
+      let tokenGrantId: string | undefined;
       const identity = await resolveSessionIdentity({
         row: null,
         sessionToken: credentials.sessionToken,
@@ -1024,6 +1040,7 @@ export class SessionLifecycleService {
           tokenTeamId = typeof payload?.teamId === 'string' ? payload.teamId : null;
           tokenScopes = payload?.scopes;
           tokenOwner = user;
+          tokenGrantId = grantIdOf(payload);
           return payload;
         },
       });
@@ -1046,6 +1063,7 @@ export class SessionLifecycleService {
               scopes: String(tokenScopes),
               user: tokenOwner,
               teamId: tokenTeamId,
+              grantId: tokenGrantId,
             }
           : { kind: 'none' },
       );
@@ -1138,6 +1156,7 @@ export class SessionLifecycleService {
         kind: credential.kind,
         scopes: credential.scopes,
         user,
+        grantId: credential.kind === 'session-token' ? credential.grantId : undefined,
       });
       const role = user.role === 'SUPER_ADMIN' || user.role === 'ADMIN' ? user.role : 'MEMBER';
       const teamIds = await computeTeamIds({

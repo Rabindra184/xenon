@@ -13,6 +13,7 @@ import { DocumentTitle } from './lib/document-title';
 const LoginPage = lazy(() => import('./pages/login'));
 const ForgotPasswordPage = lazy(() => import('./pages/forgot-password'));
 const ResetPasswordPage = lazy(() => import('./pages/reset-password'));
+const ConsentPage = lazy(() => import('./components/oauth/ConsentPage'));
 
 function Shell() {
   return (
@@ -29,31 +30,52 @@ function Shell() {
   );
 }
 
+/**
+ * The top-level pages: the sign-in pages, an agent's consent page, and the
+ * dashboard (Shell). Exported so a spec can render them in a MemoryRouter.
+ */
+export function TopLevelRoutes() {
+  return (
+    <Suspense fallback={<div style={{ padding: 40 }}>Loading…</div>}>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        {/* Links issued before 1.20.7 carried the token in the path. */}
+        <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
+        {/* Through 2.18 a page here traded an API token for the dashboard
+            cookie. Tokens no longer open the dashboard; old links sign in. */}
+        <Route path="/api-key-gate" element={<Navigate to="/login" replace />} />
+        {/* An agent's sign-in, opened by authorize: a page of its own, not
+            the dashboard's shell. A signed-out visitor signs in and comes
+            back here (RouteGuard's `next`). */}
+        <Route
+          path="/oauth/consent/:requestId"
+          element={
+            <RouteGuard>
+              <ConsentPage />
+            </RouteGuard>
+          }
+        />
+        <Route
+          path="*"
+          element={
+            <RouteGuard>
+              <Shell />
+            </RouteGuard>
+          }
+        />
+      </Routes>
+    </Suspense>
+  );
+}
+
 function App() {
   return (
     <BrowserRouter basename="/xenon">
       <DocumentTitle />
       <AuthProvider>
-        <Suspense fallback={<div style={{ padding: 40 }}>Loading…</div>}>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-            <Route path="/reset-password" element={<ResetPasswordPage />} />
-            {/* Links issued before 1.20.7 carried the token in the path. */}
-            <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
-            {/* Through 2.18 a page here traded an API token for the dashboard
-                cookie. Tokens no longer open the dashboard; old links sign in. */}
-            <Route path="/api-key-gate" element={<Navigate to="/login" replace />} />
-            <Route
-              path="*"
-              element={
-                <RouteGuard>
-                  <Shell />
-                </RouteGuard>
-              }
-            />
-          </Routes>
-        </Suspense>
+        <TopLevelRoutes />
       </AuthProvider>
     </BrowserRouter>
   );

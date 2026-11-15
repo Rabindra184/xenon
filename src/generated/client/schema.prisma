@@ -367,12 +367,18 @@ model Lease {
   durationMs       Float?
   callerTeamIds    String?
   endReason        String?
+  // An agent's lease (taken through /xenon/mcp): it needs no heartbeats and
+  // ends at expiresAt, on release, or when the sign-in grant it was taken
+  // under (grantId; null for a caller without one) is revoked.
+  heartbeatFree    Boolean?
+  grantId          String?
   members          LeaseMember[]
 
   @@index([status, expiresAt])
   @@index([status, lastHeartbeatAt, heartbeatSeconds])
   @@index([actorId])
   @@index([deviceUdid, deviceHost])
+  @@index([grantId])
 }
 
 // One phone of a lease: held for it while the lease waits, leased once it is
@@ -597,4 +603,40 @@ model Project {
   createdAt DateTime @default(now())
 
   @@index([teamId])
+}
+
+// An agent registered for browser sign-in (RFC 7591), a public client: no
+// secret. Dropped after 30 days unused. An agent whose client_id is an https
+// URL (a client ID metadata document) has no row.
+model McpClient {
+  id           String   @id
+  name         String
+  redirectUris String // JSON array of strings
+  createdAt    DateTime
+  lastUsedAt   DateTime
+
+  @@index([lastUsedAt])
+}
+
+// An agent's sign-in: one refresh-token chain. The row whose rotatedFromId is
+// null is the grant (its id is the access tokens' `gid`) and holds the current
+// refresh token's SHA-256. Every rotation adds a spent row holding the old
+// token's hash, with rotatedFromId naming the grant, so a token presented a
+// second time is recognised and its whole grant revoked.
+model McpGrant {
+  id            String    @id
+  userId        String
+  clientId      String
+  scopes        String // granular MCP scopes, space-separated
+  tokenHash     String
+  createdAt     DateTime
+  lastUsedAt    DateTime
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  rotatedFromId String?
+
+  @@index([userId])
+  @@index([clientId])
+  @@index([tokenHash])
+  @@index([rotatedFromId])
 }

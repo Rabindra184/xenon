@@ -31,7 +31,7 @@ describe('mcpScopes.resolveMcpGrant', () => {
       'xenon:recordings', 'xenon:devices:lock', 'xenon:recordings',
     ]);
     expect(g.granular).to.deep.equal(['xenon:devices:lock', 'xenon:recordings']);
-    // down-map: lock→devices; recordings hits a role-gated-only endpoint, no flat scope
+    // down-map: lock→devices, recordings→devices (recordingsScopeGuard takes devices)
     expect(g.flat).to.deep.equal(['devices']);
   });
 
@@ -62,6 +62,15 @@ describe('mcpScopes.resolveMcpGrant', () => {
     expect(g.granular.sort()).to.deep.equal([...ALL_GRANULAR_SCOPES].sort());
     expect(g.roles).to.deep.equal(['admin']);
     expect(g.flat).to.include('admin');
+  });
+
+  it('a browser sign-in (neverAdmin) granted the FULL set gets no admin role and no flat admin', () => {
+    const g = resolveMcpGrant('admin,devices,sessions,read,apps', [...ALL_GRANULAR_SCOPES], {
+      neverAdmin: true,
+    });
+    expect(g.granular.sort()).to.deep.equal([...ALL_GRANULAR_SCOPES].sort());
+    expect(g.roles).to.deep.equal([]);
+    expect(g.flat).to.deep.equal(['devices', 'sessions']);
   });
 
   it('admin key with the DEFAULT (narrowed) grant does NOT get the admin role', () => {
@@ -130,9 +139,53 @@ describe('mcpScopes.resolveMcpGrant', () => {
     });
   });
 
-  it('down-map never exceeds the key: devices-only + recordings adds no flat scope', () => {
-    const g = resolveMcpGrant('devices', ['xenon:recordings']);
-    expect(g.granular).to.deep.equal(['xenon:recordings']);
-    expect(g.flat).to.deep.equal([]); // NOT ['sessions'] — escalation closed
+  describe('xenon:recordings (the recording tools)', () => {
+    it("a devices key grants it, and the token gets devices, which REST's recordings guard takes", () => {
+      const g = resolveMcpGrant('devices', ['xenon:recordings']);
+      expect(g.granular).to.deep.equal(['xenon:recordings']);
+      expect(g.flat).to.deep.equal(['devices']); // never more than the key's own: NOT ['sessions']
+    });
+
+    it('a sessions or read key may not grant it: its recordings would all be refused', () => {
+      for (const key of ['sessions', 'read', 'read,sessions']) {
+        try {
+          resolveMcpGrant(key, ['xenon:recordings']);
+          throw new Error('should have thrown');
+        } catch (e: any) {
+          expect(e).to.be.instanceOf(McpScopeError);
+          expect(e.code).to.equal('scope_exceeds_key');
+          expect(e.message).to.include('xenon:recordings');
+        }
+      }
+    });
+
+    it('an admin-only key grants it with devices, which admin already passes, and no admin', () => {
+      // As an admin key's appium:use already gives `sessions` and its
+      // xenon:devices:lock `devices`: flat scopes it doesn't hold by name, each
+      // less than `admin`, which passes every scope check.
+      expect(resolveMcpGrant('admin', ['xenon:recordings'])).to.deep.equal({
+        granular: ['xenon:recordings'],
+        flat: ['devices'],
+        roles: [],
+      });
+      expect(resolveMcpGrant('admin', ['xenon:devices:lock']).flat).to.deep.equal(['devices']);
+      expect(resolveMcpGrant('admin', ['appium:use']).flat).to.deep.equal(['sessions']);
+    });
+
+    it('for a key without admin, the down-mapped flat set is within its own', () => {
+      for (const key of ['read', 'sessions', 'devices', 'read,devices', 'devices,sessions,read']) {
+        const own = new Set(key.split(','));
+        const allowed = ALL_GRANULAR_SCOPES.filter((s) => {
+          try {
+            resolveMcpGrant(key, [s]);
+            return true;
+          } catch {
+            return false;
+          }
+        });
+        for (const f of resolveMcpGrant(key, allowed).flat)
+          expect(own.has(f), `${key}: ${f}`).to.equal(true);
+      }
+    });
   });
 });

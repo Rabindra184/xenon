@@ -48,6 +48,9 @@ import { registerNodeSessionStatus } from '../gateway/nodeSessionStatus';
 import { registerNodeSessionMetrics } from '../gateway/nodeSessionMetrics';
 import { registerNodeSessionDeviceLogs } from '../gateway/nodeSessionDeviceLogs';
 import { dashboardPluginMiddlewareFor } from './dashboardPluginLink';
+import { registerMcpEndpoint } from '../mcp/mcpEndpoint';
+import { registerOAuthConsentRoutes, registerOAuthRoutes } from './routers/oauth';
+import { serveToolsFrom } from '../mcp/invokeApi';
 
 const ASYNC_LOCK = new AsyncLock();
 
@@ -58,6 +61,18 @@ const router = express.Router(),
   apiRouter = express.Router(),
   staticFilesRouter = express.Router();
 
+// Agent sign-in's routes (routers/oauth.ts), filled by createRouter on a
+// server that serves MCP: one router ahead of the CSRF check and the login,
+// one after. Made once, like apiRouter, so where they sit in it is where the
+// first createRouter call put them, whatever the call's options (a spec's
+// first call may be a node's, which serves none of them).
+const oauthPublicRouter = express.Router(),
+  oauthConsentRouter = express.Router();
+
+// The MCP tools run their REST routes through this router, in process
+// (src/mcp/invokeApi.ts): every route createRouter adds to it below.
+serveToolsFrom(apiRouter);
+
 // API is same-origin with the dashboard; block cross-origin browser callers.
 // Non-browser clients (curl, CLI, SDKs) send no Origin header and are unaffected.
 // Parent `router` has no cors() — if it did, its wildcard would leak through
@@ -65,7 +80,15 @@ const router = express.Router(),
 // headers set earlier in the chain. Static files keep permissive cors() so
 // the dashboard bundle can be embedded from anywhere if needed.
 apiRouter.use(cors({ origin: false }));
-staticFilesRouter.use(cors());
+// Not for /mcp, which this router passes on to (it is mounted path-less, ahead
+// of the endpoint): the wildcard would let any web page a lab user opens call
+// the agents' tools, as the synthetic admin with auth disabled. The endpoint
+// refuses another origin itself (mcpEndpoint.ts).
+const MCP_ROUTE = /^\/mcp\/?$/i;
+const staticCors = cors();
+staticFilesRouter.use((req, res, next) =>
+  MCP_ROUTE.test(req.path) ? next() : staticCors(req, res, next),
+);
 
 // Tag every API request with an AsyncLocalStorage frame so downstream logs
 // (handlers, DB calls, outbound HTTP from InternalHttpClient) can attribute
@@ -153,22 +176,36 @@ log.info('[Xenon] Dashboard available at: /xenon/ (e.g. http://localhost:4723/xe
 // drops 'unsafe-eval' and the default-src wildcard to avoid full XSS-to-RCE.
 // Google Fonts (fonts.googleapis.com for CSS, fonts.gstatic.com for woff2)
 // are explicitly allowlisted because the bundled stylesheets @import them.
+const CSP_DIRECTIVES = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "img-src 'self' data: blob:",
+  "media-src 'self' blob:",
+  "connect-src 'self' ws: wss: http: https:",
+  "font-src 'self' data: https://fonts.gstatic.com",
+];
+const csp = (frameAncestors: string) =>
+  [...CSP_DIRECTIVES, `frame-ancestors ${frameAncestors}`].join('; ') + ';';
+
 router.use((req, res, next) => {
-  res.setHeader(
-    'Content-Security-Policy',
-    [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline'",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "img-src 'self' data: blob:",
-      "media-src 'self' blob:",
-      "connect-src 'self' ws: wss: http: https:",
-      "font-src 'self' data: https://fonts.gstatic.com",
-      "frame-ancestors 'self'",
-    ].join('; ') + ';',
-  );
+  res.setHeader('Content-Security-Policy', csp("'self'"));
   next();
 });
+
+/**
+ * A dashboard page (index.html, for every client-side route) may be framed
+ * by no site, its own included. The consent page signs an agent in as the
+ * user with one click on Allow, so a page that framed it could take that
+ * click (clickjacking). It is the one index.html, and the dashboard's router
+ * reaches the consent page from any entry (a sign-in's `next`, a path in
+ * another letter case), so every page says so, not the consent path alone.
+ * Nothing frames the dashboard.
+ */
+function refuseFraming(res: express.Response): void {
+  res.setHeader('Content-Security-Policy', csp("'none'"));
+  res.setHeader('X-Frame-Options', 'DENY');
+}
 
 staticFilesRouter.use(express.static(publicPath, { index: false }));
 router.use('/api', apiRouter);
@@ -188,6 +225,14 @@ function createRouter(
   pluginArgs: IPluginArgs,
   ownServer?: { address?: string; port: number; tls?: boolean },
 ) {
+  // Sign-in for agents (OAuth: register, authorize, token, revoke), on a hub
+  // or standalone server: ahead of the CSRF check and the login. An agent's
+  // token call carries no Origin and no credential but its PKCE verifier and
+  // code, and these routes read no cookie (oauth.ts): authorize sends every
+  // browser to the dashboard's consent page, which checks the sign-in.
+  apiRouter.use('/oauth', oauthPublicRouter);
+  registerOAuthRoutes(oauthPublicRouter, pluginArgs);
+
   // CSRF defense (runs before /health so even a hostile GET->POST confused-
   // deputy has no soft target). Pass-through for GETs, for header-authed
   // callers, and when authDisabled=true. Returns 403 for cookie-authed
@@ -231,6 +276,9 @@ function createRouter(
 
   // Authenticated auth endpoints: /me, /change-password, /token
   apiRouter.use('/auth', authAuthedRouter());
+  // An agent's sign-in, allowed or denied by the signed-in dashboard user.
+  apiRouter.use('/oauth', oauthConsentRouter);
+  registerOAuthConsentRoutes(oauthConsentRouter, pluginArgs);
 
   // Admin: API key management
   apiRouter.use('/apikeys', apiKeysRouter());
@@ -282,6 +330,12 @@ function createRouter(
   // Principal Health: Add ping endpoint
   apiRouter.get('/ping', (req, res) => res.json({ pong: true, version: pkg.version }));
 
+  // The lab's tools for AI coding agents (MCP), on a hub or standalone
+  // server. On this router, not apiRouter: it checks its own header
+  // credentials and answers a 401 with a sign-in challenge, where
+  // apiRouter's login would take the dashboard cookie.
+  registerMcpEndpoint(router, pluginArgs);
+
   // Setup Swagger API documentation at /xenon/api-docs
   try {
     setupSwagger(router, '/xenon');
@@ -312,6 +366,7 @@ function createRouter(
     if (url.includes('/api/')) return res.status(404).json({ error: true, message: 'Not Found' });
 
     log.debug(`[Xenon] UI Fallback triggered for: ${url}. Targeting: ${indexPath}`);
+    refuseFraming(res);
 
     if (fs.existsSync(indexPath)) {
       try {

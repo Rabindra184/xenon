@@ -23,7 +23,7 @@ import { Request, Response, NextFunction } from 'express';
 // and the device mosaic polls each tile, so a human's reads come in bursts no
 // script sends.
 
-type Category = 'read' | 'heavy' | 'control';
+export type Category = 'read' | 'heavy' | 'control';
 
 interface Bucket {
   tokens: number;
@@ -74,43 +74,78 @@ function refill(b: Bucket) {
   b.lastRefill = now;
 }
 
+/** What a bucket says to one more request: admitted, or when to come back. */
+export type Admission =
+  | { admitted: true; category: Category; remaining: number; capacity: number }
+  | {
+      admitted: false;
+      category: Category;
+      remaining: number;
+      capacity: number;
+      retryAfter: number;
+    };
+
+/**
+ * Takes one token from `callerId`'s bucket for `category`, made with
+ * `rateLimit` (per minute) the first time. The middleware's limiter, shared
+ * with the MCP tools (toolCall.ts), which draw on a bucket of their own per
+ * user.
+ */
+export function admit(
+  callerId: string,
+  rateLimit: number,
+  category: Category,
+  perUser: boolean,
+): Admission {
+  const bucketKey = `${callerId}:${category}`;
+  let bucket = buckets.get(bucketKey);
+  if (!bucket) {
+    const capacity = capacityFor(rateLimit, category, perUser);
+    bucket = {
+      tokens: capacity,
+      lastRefill: Date.now(),
+      capacity,
+      refillPerSec: capacity / 60,
+    };
+    buckets.set(bucketKey, bucket);
+  }
+  refill(bucket);
+
+  if (bucket.tokens < 1) {
+    return {
+      admitted: false,
+      category,
+      remaining: Math.floor(bucket.tokens),
+      capacity: bucket.capacity,
+      retryAfter: Math.ceil((1 - bucket.tokens) / bucket.refillPerSec),
+    };
+  }
+  const remaining = Math.floor(bucket.tokens);
+  bucket.tokens -= 1;
+  return { admitted: true, category, remaining, capacity: bucket.capacity };
+}
+
 export function rateLimitMiddleware() {
   return function (req: Request, res: Response, next: NextFunction) {
     const caller = limitedCaller(req);
     if (!caller) return next();
 
-    const category = categorize(req);
-    const bucketKey = `${caller.id}:${category}`;
-    let bucket = buckets.get(bucketKey);
-    if (!bucket) {
-      const capacity = capacityFor(caller.rateLimit, category, caller.perUser);
-      bucket = {
-        tokens: capacity,
-        lastRefill: Date.now(),
-        capacity,
-        refillPerSec: capacity / 60,
-      };
-      buckets.set(bucketKey, bucket);
-    }
-    refill(bucket);
+    const admission = admit(caller.id, caller.rateLimit, categorize(req), caller.perUser);
 
     // Surfacing the category + remaining tokens makes 429s debuggable from
     // the client side without access to server logs.
-    res.set('X-RateLimit-Category', category);
-    res.set('X-RateLimit-Remaining', String(Math.floor(bucket.tokens)));
-    res.set('X-RateLimit-Capacity', String(bucket.capacity));
+    res.set('X-RateLimit-Category', admission.category);
+    res.set('X-RateLimit-Remaining', String(admission.remaining));
+    res.set('X-RateLimit-Capacity', String(admission.capacity));
 
-    if (bucket.tokens < 1) {
-      const retryAfter = Math.ceil((1 - bucket.tokens) / bucket.refillPerSec);
-      res.set('Retry-After', String(retryAfter));
+    if (!admission.admitted) {
+      res.set('Retry-After', String(admission.retryAfter));
       return res.status(429).json({
         error: 'rate limit exceeded',
-        category,
-        retryAfter,
+        category: admission.category,
+        retryAfter: admission.retryAfter,
       });
     }
-
-    bucket.tokens -= 1;
     next();
   };
 }

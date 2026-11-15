@@ -15,16 +15,13 @@ import {
   activeLeaseEnd,
   EndedLeaseStatus,
   endedData,
+  HeartbeatFields,
   LeaseEndReason,
   memberLost,
   waiterEnd,
 } from './leaseStatus';
 
-interface SweptLease {
-  heartbeatSeconds: number | null;
-  lastHeartbeatAt: number;
-  expiresAt: number;
-}
+type SweptLease = HeartbeatFields & { expiresAt: number };
 
 /**
  * Why an active lease is over, in words, or null while it isn't: its client
@@ -44,7 +41,7 @@ export function leaseReapReason(lease: SweptLease, now: number): string | null {
  * A waiting row has no end time of its own (`expiresAt` is set by the grant).
  */
 export function waiterGiveUpReason(
-  lease: { waitUntil: number | null; heartbeatSeconds: number | null; lastHeartbeatAt: number },
+  lease: HeartbeatFields & { waitUntil: number | null },
   now: number,
 ): string | null {
   return waiterEnd(lease, now)?.text ?? null;
@@ -198,6 +195,7 @@ export class LeaseOrphanSweeper {
         deviceHost: true,
         heartbeatSeconds: true,
         lastHeartbeatAt: true,
+        heartbeatFree: true,
         expiresAt: true,
         waitUntil: true,
         allocatedPorts: true,

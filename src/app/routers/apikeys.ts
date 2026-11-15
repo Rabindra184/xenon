@@ -4,6 +4,7 @@ import { ApiKeyService, Scope } from '../../services/ApiKeyService';
 import { scopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
 import { keyExpiryWithin } from '../../services/token/mintedLifetime';
+import { refuseGrantBound } from '../../middleware/refuseGrantBound';
 
 const KNOWN_SCOPES: readonly Scope[] = ['read', 'sessions', 'devices', 'apps', 'admin'];
 
@@ -16,7 +17,7 @@ export function apiKeysRouter(): Router {
     res.json(await svc.list());
   });
 
-  r.post('/', scopeGuard(['admin']), async (req, res) => {
+  r.post('/', scopeGuard(['admin']), refuseGrantBound, async (req, res) => {
     const { name, scopes, rateLimit, teamId, expiresAt } = req.body as {
       name: string;
       scopes: Scope[];

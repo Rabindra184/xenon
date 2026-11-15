@@ -51,7 +51,9 @@ function operations(): Array<{ key: string; op: Operation }> {
 }
 
 describe('the API reference (OpenAPI)', () => {
-  // A hub's node-only routes (/api/node/sessions/...) exist only with `hub`.
+  // A node's own routes (/api/node/sessions/...) exist only with `hub`, and
+  // a hub's or standalone server's (/mcp) only without it. The router is one
+  // object for the process, so each call adds its routes to the same one.
   const served = new Set(
     [
       // The plugin mounts this router at /xenon.
@@ -59,6 +61,7 @@ describe('the API reference (OpenAPI)', () => {
         createRouter({ ...DefaultPluginArgs, hub: 'http://hub.example:4723' } as any),
         '/xenon',
       ),
+      ...routesOf(createRouter({ ...DefaultPluginArgs } as any), '/xenon'),
     ]
       .filter((r) => r.includes(' /xenon/') && !NOT_API.has(r))
       .map(shape),

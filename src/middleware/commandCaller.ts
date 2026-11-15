@@ -1,8 +1,18 @@
 import { createHash } from 'crypto';
 import type { IncomingHttpHeaders } from 'http';
 import { canOverrideLease } from '../services/device-access/leaseOverride';
-import { verifyBearerCredential, verifyKeyPairCredential } from './verifyCredential';
+import {
+  verifyBearerCredential,
+  verifyKeyPairCredential,
+  verifySessionTokenCredential,
+  isWrongSessionToken,
+  grantIdOf,
+} from './verifyCredential';
+import { Container } from 'typedi';
+import { RevokedGrants } from '../services/oauth/revokedGrants';
 import { readBasicCredential } from './basicCredential';
+import { sessionTokenGrantsSessions } from '../services/session/sessionIdentity';
+import type { McpCaller } from '../mcp/mcpCredential';
 
 /**
  * Who is calling a WebDriver command, for the per-command check (commandAuth.ts).
@@ -12,7 +22,12 @@ import { readBasicCredential } from './basicCredential';
  * (see ACCEPTED_BEARER_AUDIENCES). The same pair also comes as
  * `Authorization: Basic base64(key:token)`, what a client sends for a hub URL
  * with the key and token in it (basicCredential.ts); a Basic header that
- * can't be read is `unreadable`, and refused like a pair that doesn't verify. Both are verified by the helpers
+ * can't be read is `unreadable`, and refused like a pair that doesn't verify.
+ * A Basic header whose user is `xenon-session` carries a `xenon-session`
+ * token as its password (what xenon_session_capabilities puts in the URL it
+ * gives an agent): checked as session create checks one, and judged by the
+ * session-token rule (checkSessionToken: it needs `sessions`, and overrides
+ * by canOverrideLease's session-token rule). All of them are verified by the helpers
  * authMiddleware uses, so an inactive user, a revoked or expired key, and a
  * bad or expired token are refused here exactly as they are on /xenon/api.
  *
@@ -24,6 +39,7 @@ export type PresentedCredential =
   | { kind: 'none' }
   | { kind: 'key-pair'; accessKey: string; token: string }
   | { kind: 'bearer'; token: string }
+  | { kind: 'session-token'; token: string }
   | { kind: 'unreadable' };
 
 export interface CommandCaller {
@@ -31,7 +47,9 @@ export interface CommandCaller {
   /**
    * May drive a session they do not own: a SUPER_ADMIN, or a credential
    * carrying the `admin` scope. The rule is canOverrideLease's (and
-   * resolveActor's); an ADMIN's ordinary key is not an override.
+   * resolveActor's); an ADMIN's ordinary key is not an override. Never an
+   * agent's browser sign-in (a token with a `gid`, grant-bound below),
+   * whatever its user's role: it acts for its user on their own sessions.
    */
   overrideAdmin: boolean;
 }
@@ -56,8 +74,28 @@ export function readPresentedCredential(headers: IncomingHttpHeaders): Presented
   if (basic.kind === 'pair') {
     return { kind: 'key-pair', accessKey: basic.accessKey, token: basic.token };
   }
+  if (basic.kind === 'session-token') return { kind: 'session-token', token: basic.token };
   if (basic.kind === 'unreadable') return { kind: 'unreadable' };
   return { kind: 'none' };
+}
+
+/**
+ * The caller of a WebDriver command an MCP tool runs in process
+ * (invokeWebDriver): `/xenon/mcp` verified it with REST's own verifiers, so
+ * nothing is read from the request. An override admin by canOverrideLease's
+ * rule, from the scopes and role REST holds for it.
+ */
+export function commandCallerOf(mcp: McpCaller): CommandCaller {
+  const { auth } = mcp;
+  return {
+    userId: auth.userId,
+    overrideAdmin: canOverrideLease({
+      kind: 'api-key',
+      scopes: auth.scopes ?? '',
+      user: { role: auth.role },
+      grantId: mcp.grantId ?? auth.grantId,
+    }),
+  };
 }
 
 /**
@@ -75,6 +113,12 @@ export function readPresentedCredential(headers: IncomingHttpHeaders): Presented
  *
  * REST re-verifies on every request, and createSession verifies the
  * credentials it is given, so only in-session commands see the window.
+ *
+ * The one exception is an agent's sign-in grant (a Bearer or session
+ * token's `gid`):
+ * revoking it is meant to stop the agent at once, so a remembered token of a
+ * grant asks RevokedGrants again on every command. That is memory, no query,
+ * until the grant's own 30 s are up, and a revoke on this server clears it.
  */
 export const CALLER_CACHE_TTL_MS = 30_000;
 
@@ -84,6 +128,9 @@ export const CALLER_CACHE_MAX_ENTRIES = 1_000;
 interface VerifierDeps {
   verifyKeyPair: typeof verifyKeyPairCredential;
   verifyBearer: typeof verifyBearerCredential;
+  verifySessionToken: typeof verifySessionTokenCredential;
+  /** Whether a sign-in grant still stands (RevokedGrants.isLive). */
+  grantLive: (grantId: string) => Promise<boolean>;
   now: () => number;
   ttlMs: number;
   maxEntries: number;
@@ -92,6 +139,8 @@ interface VerifierDeps {
 interface CacheEntry {
   caller: CommandCaller;
   expiresAt: number;
+  /** The sign-in grant a Bearer token was issued under, asked again on every hit. */
+  grantId?: string;
 }
 
 /**
@@ -112,6 +161,8 @@ export class CommandCallerVerifier {
     this.deps = {
       verifyKeyPair: verifyKeyPairCredential,
       verifyBearer: verifyBearerCredential,
+      verifySessionToken: verifySessionTokenCredential,
+      grantLive: (grantId) => Container.get(RevokedGrants).isLive(grantId),
       now: Date.now,
       ttlMs: CALLER_CACHE_TTL_MS,
       maxEntries: CALLER_CACHE_MAX_ENTRIES,
@@ -124,20 +175,36 @@ export class CommandCallerVerifier {
     const key = cacheKey(credential);
     const now = this.deps.now();
     const hit = this.cache.get(key);
-    if (hit && hit.expiresAt > now) return { valid: true, caller: hit.caller };
+    if (hit && hit.expiresAt > now) {
+      if (hit.grantId === undefined || (await this.deps.grantLive(hit.grantId))) {
+        return { valid: true, caller: hit.caller };
+      }
+      this.cache.delete(key);
+      return { valid: false };
+    }
     if (hit) this.cache.delete(key);
 
     const verified = await this.check(credential);
     if (!verified) return { valid: false };
 
     const expiresAt = Math.min(now + this.deps.ttlMs, verified.credentialExpiresAt ?? Infinity);
-    if (expiresAt > now) this.remember(key, { caller: verified.caller, expiresAt }, now);
+    if (expiresAt > now) {
+      this.remember(
+        key,
+        {
+          caller: verified.caller,
+          expiresAt,
+          ...(verified.grantId !== undefined ? { grantId: verified.grantId } : {}),
+        },
+        now,
+      );
+    }
     return { valid: true, caller: verified.caller };
   }
 
   private async check(
     credential: Exclude<PresentedCredential, { kind: 'none' } | { kind: 'unreadable' }>,
-  ): Promise<{ caller: CommandCaller; credentialExpiresAt?: number } | null> {
+  ): Promise<{ caller: CommandCaller; credentialExpiresAt?: number; grantId?: string } | null> {
     if (credential.kind === 'key-pair') {
       const out = await this.deps.verifyKeyPair(credential.accessKey, credential.token);
       if (!out) return null;
@@ -154,12 +221,15 @@ export class CommandCallerVerifier {
       };
     }
 
+    if (credential.kind === 'session-token') return this.checkSessionToken(credential.token);
+
     const out = await this.deps.verifyBearer(credential.token);
     if (!out) return null;
     // A Bearer token carries the scopes of the credential that minted it
     // (/auth/token), so it is judged like a key. Judging it by role alone
     // would let an ADMIN's ordinary key mint its way to an override, as a
     // xenon-session token's lease override did through 2.14.
+    const grantId = grantIdOf(out.payload);
     return {
       caller: {
         userId: out.user.id,
@@ -167,9 +237,45 @@ export class CommandCallerVerifier {
           kind: 'api-key',
           scopes: String(out.payload.scopes ?? ''),
           user: out.user,
+          grantId,
         }),
       },
       credentialExpiresAt: typeof out.payload.exp === 'number' ? out.payload.exp * 1000 : undefined,
+      grantId,
+    };
+  }
+
+  /**
+   * A `xenon-session` token, by session create's rule
+   * (verifySessionTokenCredential): a live signature, audience and lifetime,
+   * and an ACTIVE subject. It must carry the `sessions` scope, as it must to
+   * create a session. Whether it overrides is canOverrideLease's session-token
+   * rule, on its user's role now.
+   */
+  private async checkSessionToken(
+    token: string,
+  ): Promise<{ caller: CommandCaller; credentialExpiresAt?: number; grantId?: string } | null> {
+    let out: Awaited<ReturnType<typeof verifySessionTokenCredential>>;
+    try {
+      out = await this.deps.verifySessionToken(token);
+    } catch (err) {
+      if (isWrongSessionToken(err)) return null;
+      throw err;
+    }
+    if (!sessionTokenGrantsSessions(out.payload.scopes)) return null;
+    const grantId = grantIdOf(out.payload);
+    return {
+      caller: {
+        userId: out.user.id,
+        overrideAdmin: canOverrideLease({
+          kind: 'session-token',
+          scopes: String(out.payload.scopes ?? ''),
+          user: out.user,
+          grantId,
+        }),
+      },
+      credentialExpiresAt: typeof out.payload.exp === 'number' ? out.payload.exp * 1000 : undefined,
+      grantId,
     };
   }
 
@@ -192,6 +298,6 @@ function cacheKey(
   const material =
     credential.kind === 'key-pair'
       ? `key-pair\0${credential.accessKey}\0${credential.token}`
-      : `bearer\0${credential.token}`;
+      : `${credential.kind}\0${credential.token}`;
   return createHash('sha256').update(material).digest('hex');
 }

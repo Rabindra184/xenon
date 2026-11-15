@@ -2,7 +2,9 @@ import 'reflect-metadata';
 import { expect } from 'chai';
 import express, { Router } from 'express';
 import request from '../helpers/loopbackRequest';
+import { Container } from 'typedi';
 import register from '../../src/app/routers/sdk-version';
+import { PluginContext } from '../../src/PluginContext';
 
 describe('GET /xenon/api/sdk/version (features)', () => {
   const app = express();
@@ -44,6 +46,21 @@ describe('GET /xenon/api/sdk/version (features)', () => {
       'phone-host',
       'phone-host-events',
       'lease-host',
+      'mcp-server',
     ]);
+  });
+
+  it("doesn't say mcp-server on a node, which doesn't serve /xenon/mcp", async () => {
+    const context = Container.get(PluginContext);
+    const saved = context.pluginArgs;
+    context.pluginArgs = { ...saved, hub: 'http://hub.example:4723' };
+    try {
+      const res = await request(app).get('/xenon/api/sdk/version');
+      expect(res.status).to.equal(200);
+      expect(res.body.supports).to.not.include('mcp-server');
+      expect(res.body.supports).to.include('lease-host');
+    } finally {
+      context.pluginArgs = saved;
+    }
   });
 });

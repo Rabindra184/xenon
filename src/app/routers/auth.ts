@@ -14,10 +14,12 @@ import { config } from '../../config';
 import { prisma } from '../../prisma';
 import { JwtKeyService } from '../../services/token/JwtKeyService';
 import { resolveMcpGrant, McpScopeError } from '../../services/token/mcpScopes';
+import { mcpTokenClaims } from '../../services/token/mcpTokenClaims';
 import { passwordResetMode } from '../../services/passwordResetMode';
 import { buildResetLink, resetEmail, resetLinkBase } from '../../services/passwordResetLink';
 import { mintedLifetimeSec } from '../../services/token/mintedLifetime';
 import { mcpTokenTtlSec } from '../../services/token/mcpTokenTtl';
+import { refuseGrantBound } from '../../middleware/refuseGrantBound';
 
 const SESSION_COOKIE = 'xenon_dashboard_session';
 const isSecureFromReq = (req: any) =>
@@ -70,17 +72,7 @@ export async function issueToken(
     // flat `scopes` claim so this token's REST power matches its MCP grant
     // (least privilege — an mcp token no longer carries the key's full flat set).
     const grant = resolveMcpGrant(auth.scopes, body.scopes);
-    const token = await svc.sign(
-      {
-        sub: auth.userId,
-        role: auth.role,
-        scopes: grant.flat.join(','),
-        teamId: auth.teamId ?? null,
-        scope: grant.granular.join(' '),
-        roles: grant.roles,
-      },
-      { audience, ttlSeconds: expiresIn },
-    );
+    const token = await svc.sign(mcpTokenClaims(auth, grant), { audience, ttlSeconds: expiresIn });
     // Session-token capability (spec §3 item 6 / R9): a sibling credential the
     // client injects as `xe:options.sessionToken` so the Appium createSession
     // interceptor can refuse tokenless direct-connect sessions when the gate is on.
@@ -97,14 +89,7 @@ export async function issueToken(
     const askedForScopes = Array.isArray(body.scopes) && body.scopes.length > 0;
     const sessionAdmin =
       grantsScope(auth.scopes, 'admin') && (!askedForScopes || grant.roles.includes('admin'));
-    const sessionToken = await svc.sign(
-      {
-        sub: auth.userId,
-        teamId: auth.teamId ?? null,
-        scopes: sessionAdmin ? 'admin,sessions' : 'sessions',
-      },
-      { audience: 'xenon-session', ttlSeconds: expiresIn },
-    );
+    const { sessionToken } = await mintSessionToken(auth, { admin: sessionAdmin });
     return { token, expiresIn, audience, scopes: grant.granular, sessionToken };
   }
 
@@ -113,6 +98,41 @@ export async function issueToken(
     { audience, ttlSeconds: expiresIn },
   );
   return { token, expiresIn, audience };
+}
+
+/**
+ * A `xenon-session` token for `auth`'s user: the `xe:options.sessionToken`
+ * capability, which says who creates an Appium session (and, as the Basic
+ * password of a hub URL, who drives it under per-command auth). It lives as
+ * long as a `xenon-mcp` token (XENON_MCP_TOKEN_TTL_SEC), never past the
+ * credential it is minted with.
+ *
+ * It carries `sessions`, and `admin` (a lease override) when `opts.admin`
+ * says so: by default when the minting credential holds `admin`. POST
+ * /auth/token passes its own rule (the grant must not be narrower than the
+ * credential); xenon_session_capabilities, whose caller's scopes already are
+ * its grant's, takes the default.
+ *
+ * `opts.grantId` (an agent's sign-in, xenon_session_capabilities) goes on as
+ * `gid`, so revoking the sign-in refuses this token too, at once, as it does
+ * the agent's access token (verifySessionTokenCredential).
+ */
+export async function mintSessionToken(
+  auth: { userId: string; scopes: string; teamId?: string | null; credentialExpiresAt?: number },
+  opts: { admin?: boolean; grantId?: string } = {},
+): Promise<{ sessionToken: string; expiresIn: number }> {
+  const expiresIn = mintedLifetimeSec(MCP_TTL_SEC, auth.credentialExpiresAt);
+  const admin = opts.admin ?? grantsScope(auth.scopes, 'admin');
+  const sessionToken = await Container.get(JwtKeyService).sign(
+    {
+      sub: auth.userId,
+      teamId: auth.teamId ?? null,
+      scopes: admin ? 'admin,sessions' : 'sessions',
+      ...(opts.grantId ? { gid: opts.grantId } : {}),
+    },
+    { audience: 'xenon-session', ttlSeconds: expiresIn },
+  );
+  return { sessionToken, expiresIn };
 }
 
 // Public — anonymous-callable. Mounted before authMiddleware.
@@ -345,7 +365,7 @@ export function authAuthedRouter(): Router {
     });
   });
 
-  r.post('/token', async (req, res) => {
+  r.post('/token', refuseGrantBound, async (req, res) => {
     try {
       const out = await issueToken(req.auth!, req.body ?? {});
       res.json(out);

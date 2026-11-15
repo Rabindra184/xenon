@@ -57,6 +57,7 @@ import {
 import { resetDevicesAtBoot } from '../data-service/deviceSettings';
 import { PhoneNetworkRestore } from './network/PhoneNetworkRestore';
 import { createRouter } from '../app';
+import { oauthWellKnownRouter } from '../app/routers/oauth';
 import {
   commandAuthDeps,
   registerSessionGateway,
@@ -82,6 +83,7 @@ import {
   recordingConfigFrom,
 } from '../config';
 import { SocketServer } from './SocketServer';
+import { watchDepartedUsers } from './oauth/departedUsers';
 import { noteServerLogFilters } from './logging/tokenLogFilter';
 import { readAiRedaction } from './ai/aiRedaction';
 import { SocketClient } from './SocketClient';
@@ -604,6 +606,11 @@ export class ServerManager {
     cliArgs: ServerArgs,
     pluginArgs: IPluginArgs,
   ) {
+    // An MCP tool's WebDriver command runs through this app (invokeWebDriver).
+    Container.get(PluginContext).expressApp = expressApp;
+    // How an agent learns to sign in to /xenon/mcp (RFC 9728, RFC 8414): on
+    // the server's root, where the standards put them.
+    expressApp.use(oauthWellKnownRouter(pluginArgs));
     expressApp.use(
       '/xenon',
       createRouter(pluginArgs, {
@@ -781,6 +788,11 @@ export class ServerManager {
 
       const socketServer = Container.get(SocketServer);
       socketServer.initialize(httpServer);
+      // A user made Inactive or deleted: their agents' sign-ins are revoked
+      // and their agents' leases end (departedUsers.ts), as their sockets
+      // are checked again (SocketServer.recheckUser).
+      const stopWatchingUsers = watchDepartedUsers();
+      httpServer?.once?.('close', stopWatchingUsers);
 
       const tracingService = Container.get(TracingService);
       tracingService.initialize({ isHub: !pluginArgs.hub });

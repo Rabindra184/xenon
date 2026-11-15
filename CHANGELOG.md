@@ -8,6 +8,98 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## Unreleased
+
+**The hub serves MCP itself: add it to any coding agent, and the agent signs in through your browser.**
+
+Two database migrations, applied at startup: two columns on `Lease`
+(`heartbeatFree`, `grantId`) and two new tables (`McpClient`, `McpGrant`).
+Update with `appium plugin update xenon`. On a hub, only the hub needs this
+release: a node doesn't serve MCP, and sessions on its phones go through the
+hub as before.
+
+### Added
+
+- **`/xenon/mcp`, the lab's tools for AI coding agents.** Claude Code, Codex,
+  Cursor, VS Code, Gemini CLI, Windsurf and any other MCP client add the
+  hub's address and get Xenon's lab tools: `xenon_list_devices`,
+  `xenon_acquire_device`, `xenon_release_device`, `xenon_selector_health`,
+  `xenon_healing_events`, `xenon_start_recording`, `xenon_stop_recording` and
+  `xenon_execute_script`, with Xenon Studio's names and arguments, so its
+  prompts and skills keep working. Through 2.37 these needed Studio's
+  gateway, a service each lab deployed beside its hub. Each tool runs its
+  REST route in process, as the caller, so team rules, ownership, leases,
+  scopes and the answers are REST's: a phone or session the caller may not
+  see is REST's not-found (`xenon_healing_events` answered an empty list for
+  one in Studio). Three tools are new: `xenon_lab_info` (the lab and who the
+  caller is), `xenon_extend_device` and `xenon_session_capabilities`, which
+  gives `appium-mcp`'s create-session call the hub's WebDriver URL and
+  capabilities that make the session the caller's. Served on a hub or
+  standalone server, whether or not `enableDashboard` is on; never on a
+  node. Each call is a span and an event log entry (`mcp_tool_call`: user,
+  tool, outcome, duration; no arguments or answers), and is rate limited per
+  user. A tool's REST call gives up after 30 s and a WebDriver command after
+  5 minutes (`timeout`).
+- **Sign-in through the browser** (OAuth 2.1, the MCP authorization spec),
+  against the dashboard's own login: discovery documents under
+  `/.well-known/`, client registration, PKCE `S256`, and a consent page that
+  names the agent, the lab, where the browser goes back to and what the
+  agent may do. The agent gets an hour's access token and a refresh token
+  that rotates on every use and stops after 30 days unused or 90 days in all
+  (`XENON_MCP_REFRESH_IDLE_DAYS`, `XENON_MCP_REFRESH_MAX_DAYS`). A refresh
+  token used again within a week of being replaced revokes its sign-in. No
+  token goes in a config file, and nothing needs renewing by hand. Sign-in is
+  limited per caller address, read through `trustProxy`: behind a proxy, set
+  it to a hop count or the proxy's addresses.
+- **Signing an agent out stops it at once.** The **AI agents** page, for
+  every signed-in user, shows the command that adds this lab to each agent
+  and the agents they have signed in, each with Sign out
+  (`GET /oauth/grants`, `DELETE /oauth/grants/:id`; an admin revokes all of
+  a user's with `DELETE /oauth/grants?userId=`). The agent's tokens are
+  refused from its next request, on `/xenon/mcp`, REST and WebDriver
+  commands, and its leases end. A user set to Inactive or deleted has their
+  agents signed out. A session the agent already started goes on unless
+  `XENON_REQUIRE_COMMAND_AUTH` is on, and a recording it started keeps its
+  phones until it is stopped.
+- **An agent's lease needs no heartbeats.** A lease taken through a tool
+  lasts 15 minutes unless the agent asks for another length (1 minute to 24
+  hours) or extends it, and ends when the agent releases it, at its end, or
+  when its sign-in is revoked or its user leaves (`endReason`
+  `grant_revoked`, `user_not_active`). An agent has no process to send
+  heartbeats: a Studio agent's lease lapsed about 90 s after it was taken
+  unless a session started on the phone. SDK leases are unchanged.
+- **CI agents need no browser.** `/xenon/mcp` also takes an access key and
+  token (headers or Basic) or a bearer token from `POST /auth/token`. Never
+  the dashboard cookie, and a browser page from another site is refused
+  (`403 forbidden_origin`).
+- **A session token as a hub URL's password.** With per-command auth on,
+  `appium-mcp` sends no credential after the create but the URL's own, so
+  `xenon_session_capabilities` puts the session token there as the Basic
+  password of the user `xenon-session`. Per-command auth and session create
+  both take it. A session token made under an agent's sign-in stops working
+  when the agent is signed out.
+- **Clients can check:** `/capabilities` reports `features.mcpServer`
+  (`{ path, url, oauth, contractVersion, tools }`) and `/sdk/version` lists
+  `mcp-server`, both only where the endpoint is served.
+- A new runtime dependency, `@modelcontextprotocol/sdk` 1.32, plain
+  JavaScript with no install script.
+
+### Changed
+
+- **`xenon:recordings` comes from the `devices` scope only.** Through 2.37
+  a credential with only `sessions` could mint an `xenon-mcp` token with
+  `xenon:recordings`, whose recording calls REST then refused for want of
+  `devices`. `POST /auth/token` now refuses that request with
+  `403 scope_exceeds_key`, and the scope gives a token `devices` on REST.
+- **An agent signed in through the browser makes no credentials.**
+  `POST /auth/token`, `/profile/tokens`, `/profile/access-key/rotate`,
+  `/apikeys`, `/users` and `/users/:id/reset-link` answer its token
+  `403 agent_sign_in_cannot_make_credentials`, so nothing it made outlives
+  its sign-in. A lease it takes through REST belongs to its sign-in too.
+- **No dashboard page may be framed** (`frame-ancestors 'none'`,
+  `X-Frame-Options: DENY`): the consent page signs an agent in with one
+  click, which a framing page could take.
+
 ## Xenon Control 0.5.0
 
 **Xenon Control has settings for the options Xenon gained since 2.18,

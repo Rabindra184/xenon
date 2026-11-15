@@ -47,18 +47,31 @@ const SAME_NAMED_PHONES = [
 const CONTROL = `/devices/${MOCK_DEVICE.udid}/control`;
 // Device control from a link with no host, for a udid two servers have: the chooser.
 const CHOOSER = '/devices/emulator-5554/control';
+// An agent's consent page, for a sign-in request the guard answers (MOCK_CONSENT):
+// the live server has none waiting, and would show "Sign-in not found".
+const CONSENT = '/oauth/consent/req-mock-1';
+const MOCK_CONSENT = {
+  requestId: 'req-mock-1',
+  client: { id: 'https://agent.example.com/client.json', name: 'Claude Code' },
+  hub: 'http://127.0.0.1:4723',
+  redirectUri: 'http://127.0.0.1:53682/callback',
+  scopes: ['appium:use', 'xenon:devices:read', 'xenon:devices:lock'],
+  expiresAt: '2026-11-15T10:10:00.000Z',
+};
 type Route = {
   path: string;
   /** Serve MOCK_DEVICE and SAME_NAMED_PHONES as the device list (device-control routes). */
   mockDevice?: boolean;
   /** Visit as a signed-out user: /auth/me answers 401. */
   signedOut?: boolean;
+  /** Answer the consent page's GET with MOCK_CONSENT. */
+  mockConsent?: boolean;
 };
 const ROUTES: Route[] = [
   '/overview', '/devices', '/devices/live', '/apps', '/builds', '/selector-health',
   '/settings', '/settings/ai', '/settings/maintenance', '/settings/notifications',
   '/settings/teams', '/settings/users', '/settings/api-keys', '/profile',
-  '/runbooks/timeout',
+  '/runbooks/timeout', '/agents',
 ]
   .map((path): Route => ({ path }))
   // Sign-in pages are for signed-out visitors. On an auth-disabled server
@@ -66,7 +79,8 @@ const ROUTES: Route[] = [
   // without this the sweep would test Overview a second time under /login.
   .concat(['/login', '/forgot-password', '/reset-password'].map((path) => ({ path, signedOut: true })))
   .concat(['', '/screenshot', '/logs', '/terminal', '/omni'].map((t) => ({ path: CONTROL + t, mockDevice: true })))
-  .concat([{ path: CHOOSER, mockDevice: true }]);
+  .concat([{ path: CHOOSER, mockDevice: true }])
+  .concat([{ path: CONSENT, mockConsent: true }]);
 
 // Legitimate no-ops the sweep can't tell apart from a dead control. Keep short,
 // and give every entry a reason.
@@ -175,6 +189,9 @@ async function guard(page: Page, target: Route, net: string[], writes: string[])
     }
     if (target.signedOut && pathname === '/xenon/api/auth/me') {
       return route.fulfill({ status: 401, json: { error: 'unauthenticated' } });
+    }
+    if (target.mockConsent && method === 'GET' && pathname.startsWith('/xenon/api/oauth/consent/')) {
+      return route.fulfill({ json: MOCK_CONSENT });
     }
     if (pathname.startsWith('/xenon/api/control/') || !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
       if (method !== 'GET') writes.push(`${method} ${pathname}`);

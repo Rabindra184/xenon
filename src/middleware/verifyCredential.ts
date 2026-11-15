@@ -3,6 +3,7 @@ import { Container } from 'typedi';
 import { ApiKeyService, ApiKeyRow } from '../services/ApiKeyService';
 import { UserService } from '../services/UserService';
 import { JwtKeyService } from '../services/token/JwtKeyService';
+import { RevokedGrants } from '../services/oauth/revokedGrants';
 
 /**
  * The credential checks behind authMiddleware's header-pair and Bearer paths.
@@ -59,6 +60,12 @@ export async function verifyKeyPairCredential(
  * not initialized") means it could not be checked, and is rethrown once no
  * audience has verified.
  *
+ * A token issued under a sign-in grant (its `gid`, browser sign-in for
+ * agents) is refused once that grant is revoked or gone, at once on this
+ * server (RevokedGrants, which GrantStore.revoke tells). A token without
+ * `gid` costs no lookup beyond the user's. A grant lookup that fails throws,
+ * as the user lookup does: the token could not be checked.
+ *
  * The payload's `scopes` are the token's as of now: `admin` is dropped once
  * its user is a MEMBER. A token's scopes are fixed when it is minted, for up
  * to a day, and REST (resolveActor, scopeGuard) and per-command auth's
@@ -84,7 +91,18 @@ export async function verifyBearerCredential(
   }
   const user = await Container.get(UserService).findById(String(payload.sub));
   if (!user || user.status !== 'ACTIVE') return null;
+  const gid = grantIdOf(payload);
+  if (gid !== undefined && !(await Container.get(RevokedGrants).isLive(gid))) return null;
   return { payload: { ...payload, scopes: scopesForLiveRole(payload.scopes, user.role) }, user };
+}
+
+/**
+ * The sign-in grant a token was issued under (its `gid` claim), when it has
+ * one. Only browser sign-in mints it; a token from POST /auth/token has none.
+ */
+export function grantIdOf(payload: jose.JWTPayload): string | undefined {
+  const gid = payload.gid;
+  return typeof gid === 'string' && gid ? gid : undefined;
 }
 
 /** A token's `scopes` claim without `admin` when its user is now a MEMBER. */
@@ -105,6 +123,14 @@ export class SessionTokenSubjectError extends Error {
   }
 }
 
+/** A session token minted under an agent's sign-in grant (`gid`) that is revoked or gone. */
+export class SessionTokenGrantRevokedError extends Error {
+  constructor() {
+    super("the session token's agent sign-in is revoked");
+    this.name = 'SessionTokenGrantRevokedError';
+  }
+}
+
 /**
  * Whether verifySessionTokenCredential's error means the token is wrong (a
  * bad signature, audience or lifetime, not a JWT, or a departed user), as
@@ -113,7 +139,11 @@ export class SessionTokenSubjectError extends Error {
  * refuses the create, as a key whose owner can't be looked up does.
  */
 export function isWrongSessionToken(err: unknown): boolean {
-  return err instanceof jose.errors.JOSEError || err instanceof SessionTokenSubjectError;
+  return (
+    err instanceof jose.errors.JOSEError ||
+    err instanceof SessionTokenSubjectError ||
+    err instanceof SessionTokenGrantRevokedError
+  );
 }
 
 /**
@@ -122,6 +152,10 @@ export function isWrongSessionToken(err: unknown): boolean {
  * and a subject who is an ACTIVE user, looked up now. Through 2.14 session
  * create checked the signature alone, so a deleted or Inactive user's token
  * created sessions as them until it expired.
+ *
+ * A token minted under an agent's sign-in grant (`gid`,
+ * xenon_session_capabilities) is wrong once that grant is revoked or gone,
+ * as verifyBearerCredential judges an access token's.
  *
  * Throws for a token that does not verify, as JwtKeyService.verify does, so
  * the session-token gate and attribution treat a wrong signature and a
@@ -134,5 +168,9 @@ export async function verifySessionTokenCredential(
   const payload = await Container.get(JwtKeyService).verify(token, { audience: 'xenon-session' });
   const user = await Container.get(UserService).findById(String(payload.sub));
   if (!user || user.status !== 'ACTIVE') throw new SessionTokenSubjectError();
+  const gid = grantIdOf(payload);
+  if (gid !== undefined && !(await Container.get(RevokedGrants).isLive(gid))) {
+    throw new SessionTokenGrantRevokedError();
+  }
   return { payload, user: user as VerifiedUser };
 }

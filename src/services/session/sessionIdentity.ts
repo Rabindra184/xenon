@@ -58,3 +58,16 @@ export async function resolveSessionIdentity(
   }
   return NONE;
 }
+
+/**
+ * A session token admits a session only with the `sessions` scope, as a key
+ * pair does. Tokens minted before this check carry no `scopes` claim, and
+ * POST /auth/token gave one to any credential, a read-only one included:
+ * they are refused too. Per-command auth takes a session token (as the Basic
+ * password) by the same rule.
+ */
+export function sessionTokenGrantsSessions(scopes: unknown): boolean {
+  if (typeof scopes !== 'string') return false;
+  const owned = scopes.split(',').map((s) => s.trim());
+  return owned.includes('sessions') || owned.includes('admin');
+}

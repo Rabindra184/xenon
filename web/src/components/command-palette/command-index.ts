@@ -19,6 +19,7 @@ const NAV_ITEMS: CommandItem[] = [
   { id: 'nav:builds', kind: 'nav', label: 'Sessions', path: '/builds' },
   { id: 'nav:apps', kind: 'nav', label: 'Apps', path: '/apps' },
   { id: 'nav:selector-health', kind: 'nav', label: 'Selector health', path: '/selector-health' },
+  { id: 'nav:agents', kind: 'nav', label: 'AI agents', path: '/agents' },
   { id: 'nav:notifications', kind: 'nav', label: 'Notifications', path: '/settings/notifications' },
   { id: 'nav:settings', kind: 'nav', label: 'Settings', path: '/settings' },
   { id: 'nav:ai-settings', kind: 'nav', label: 'AI engine', path: '/settings/ai' },

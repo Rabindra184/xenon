@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import log from '../logger';
 import { config as xenonConfig } from '../config';
+import { mcpContextOf } from '../mcp/invokeApi';
 
 // Defense-in-depth CSRF for cookie-authed dashboard callers. The session
 // cookie is already SameSite=Strict (see auth.ts), which blocks the common
@@ -48,6 +49,11 @@ function sourceHostOf(source: string | undefined): string | null {
 export function csrfMiddleware(req: Request, res: Response, next: NextFunction) {
   if (xenonConfig.authDisabled === true) return next();
   if (!STATE_CHANGING_METHODS.has(req.method)) return next();
+
+  // An MCP tool's call to its REST route, made in process (invokeApi): no
+  // browser sent it, and its caller was checked by /xenon/mcp. Known by the
+  // symbol invokeApi sets on the request object, never by a header.
+  if (mcpContextOf(req)) return next();
 
   // Header-based auth: safe by construction (see block comment above). A
   // hub's signed call to its node (x-xenon-hub-token) is one too.

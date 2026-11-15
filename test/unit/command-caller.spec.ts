@@ -3,6 +3,7 @@ import sinon from 'sinon';
 import {
   CALLER_CACHE_TTL_MS,
   CommandCallerVerifier,
+  commandCallerOf,
   readPresentedCredential,
 } from '../../src/middleware/commandCaller';
 
@@ -157,6 +158,55 @@ describe('CommandCallerVerifier', () => {
       verifyBearer.resolves({ payload: { sub: 'u' }, user: user('u', 'ADMIN') });
       const verdict: any = await verifier().verify(bearer());
       expect(verdict.caller.overrideAdmin).to.equal(false);
+    });
+
+    it("never overrides for an agent's browser sign-in (a token with a gid), a super admin's included", async () => {
+      const grantLive = sinon.stub().resolves(true);
+      verifyBearer.resolves({
+        payload: { sub: 'u', scopes: 'admin,devices,sessions', gid: 'grant-1' },
+        user: user('u', 'SUPER_ADMIN'),
+      });
+      const asBearer: any = await verifier({ grantLive }).verify(bearer());
+      expect(asBearer.caller.overrideAdmin).to.equal(false);
+
+      const verifySessionToken = sinon.stub().resolves({
+        payload: { sub: 'u', scopes: 'admin,sessions', gid: 'grant-1' },
+        user: user('u', 'SUPER_ADMIN'),
+      });
+      const asSessionToken: any = await verifier({ grantLive, verifySessionToken }).verify({
+        kind: 'session-token',
+        token: 'session-jwt',
+      });
+      expect(asSessionToken.caller.overrideAdmin).to.equal(false);
+
+      // Without a gid the same super admin's token overrides, as before.
+      verifyBearer.resolves({
+        payload: { sub: 'u', scopes: 'sessions' },
+        user: user('u', 'SUPER_ADMIN'),
+      });
+      const minted: any = await verifier().verify(bearer('another-jwt'));
+      expect(minted.caller.overrideAdmin).to.equal(true);
+    });
+  });
+
+  describe("commandCallerOf (an MCP tool's caller)", () => {
+    const mcp = (role: string, scopes: string, grantId?: string) =>
+      ({
+        auth: { kind: 'bearer', userId: 'u', role, scopes, rateLimit: 300, teamIds: undefined },
+        ...(grantId ? { grantId } : {}),
+      }) as any;
+
+    it('overrides by the rule for a key or a minted token', () => {
+      expect(commandCallerOf(mcp('SUPER_ADMIN', 'sessions')).overrideAdmin).to.equal(true);
+      expect(commandCallerOf(mcp('ADMIN', 'admin,sessions')).overrideAdmin).to.equal(true);
+      expect(commandCallerOf(mcp('ADMIN', 'sessions')).overrideAdmin).to.equal(false);
+    });
+
+    it('never for an agent signed in through the browser', () => {
+      expect(commandCallerOf(mcp('SUPER_ADMIN', 'devices,sessions', 'g1')).overrideAdmin).to.equal(
+        false,
+      );
+      expect(commandCallerOf(mcp('ADMIN', 'admin,sessions', 'g1')).overrideAdmin).to.equal(false);
     });
   });
 

@@ -29,6 +29,10 @@
       "description": "Sign-in, sign-out, password reset and tokens."
     },
     {
+      "name": "Agent sign-in",
+      "description": "How an AI agent signs in to `/mcp` in the browser (OAuth 2.1): registration, authorize, consent, tokens and revocation. Discovery is on the server root, outside `/xenon`: `/.well-known/oauth-protected-resource/xenon/mcp` and `/.well-known/oauth-authorization-server`."
+    },
+    {
       "name": "Profile",
       "description": "Your own account: API tokens and access key."
     },
@@ -111,6 +115,10 @@
     {
       "name": "Admin",
       "description": "Operations views for administrators."
+    },
+    {
+      "name": "MCP",
+      "description": "The lab's tools for AI coding agents, over the Model Context Protocol."
     }
   ],
   "components": {
@@ -1639,6 +1647,228 @@
           }
         }
       },
+      "IdentityOAuthErrorBody": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "example": "invalid_grant"
+          },
+          "error_description": {
+            "type": "string"
+          }
+        }
+      },
+      "IdentityOAuthClientMetadata": {
+        "type": "object",
+        "required": [
+          "redirect_uris"
+        ],
+        "properties": {
+          "client_name": {
+            "type": "string",
+            "description": "Shown on the consent page; at most 100 characters."
+          },
+          "redirect_uris": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "grant_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "response_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "token_endpoint_auth_method": {
+            "type": "string",
+            "description": "Ignored; every agent is a public client (`none`)."
+          }
+        }
+      },
+      "IdentityOAuthClient": {
+        "type": "object",
+        "properties": {
+          "client_id": {
+            "type": "string"
+          },
+          "client_id_issued_at": {
+            "type": "integer"
+          },
+          "client_name": {
+            "type": "string"
+          },
+          "redirect_uris": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "token_endpoint_auth_method": {
+            "type": "string",
+            "enum": [
+              "none"
+            ]
+          },
+          "grant_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "response_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "IdentityOAuthTokenRequest": {
+        "type": "object",
+        "required": [
+          "grant_type",
+          "client_id"
+        ],
+        "properties": {
+          "grant_type": {
+            "type": "string",
+            "enum": [
+              "authorization_code",
+              "refresh_token"
+            ]
+          },
+          "client_id": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "code_verifier": {
+            "type": "string"
+          },
+          "redirect_uri": {
+            "type": "string"
+          },
+          "refresh_token": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string",
+            "format": "uri"
+          }
+        }
+      },
+      "IdentityOAuthTokens": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string"
+          },
+          "token_type": {
+            "type": "string",
+            "enum": [
+              "Bearer"
+            ]
+          },
+          "expires_in": {
+            "type": "integer"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "refresh_token": {
+            "type": "string"
+          }
+        }
+      },
+      "IdentityAgentGrant": {
+        "type": "object",
+        "description": "One browser sign-in of an agent. Never its tokens.",
+        "required": [
+          "id",
+          "clientName",
+          "scopes",
+          "createdAt",
+          "lastUsedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "clientName": {
+            "type": "string",
+            "description": "The agent's name, as it registered (or its client document's)."
+          },
+          "scopes": {
+            "type": "array",
+            "description": "The MCP scopes the user granted.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastUsedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the agent last refreshed its tokens."
+          }
+        }
+      },
+      "IdentityConsentRequest": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string"
+          },
+          "client": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "hub": {
+            "type": "string",
+            "description": "This hub's origin, as agents reach it."
+          },
+          "redirectUri": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "description": "The MCP scopes this user would grant.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "IdentityRole": {
         "type": "string",
         "enum": [
@@ -2394,8 +2624,68 @@
               "appReuse": {
                 "type": "boolean",
                 "description": "An uploaded app a session names by id is handed to the driver\nof this server's own phones as the library's file, and a node\nkeeps each build it fetches from its hub, so a build is\ntransferred at most once per host, with sign-in on too.\n"
+              },
+              "mcpServer": {
+                "type": "object",
+                "description": "The tools for AI coding agents, over MCP. Present on a hub or a\nstandalone server, never on a node (its phones are reached\nthrough its hub). `path` is where the endpoint is; `url` is the\nendpoint as agents name it (`XENON_PUBLIC_URL`'s origin when\nset, else the request's). `oauth` says agents can sign in\nthrough the browser when auth is on. `contractVersion` changes\nwhen a tool's name or arguments do. `tools` names every tool;\na caller is shown only those its scopes allow.\n",
+                "required": [
+                  "path",
+                  "oauth",
+                  "contractVersion",
+                  "tools"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "example": "/xenon/mcp"
+                  },
+                  "url": {
+                    "type": "string",
+                    "example": "https://xenon.example.com/xenon/mcp"
+                  },
+                  "oauth": {
+                    "type": "boolean"
+                  },
+                  "contractVersion": {
+                    "type": "integer",
+                    "example": 1
+                  },
+                  "tools": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
               }
             }
+          }
+        }
+      },
+      "PlatformJsonRpcError": {
+        "type": "object",
+        "description": "A JSON-RPC 2.0 error, as the MCP endpoint answers one.",
+        "properties": {
+          "jsonrpc": {
+            "type": "string",
+            "example": "2.0"
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "example": -32700
+              },
+              "message": {
+                "type": "string",
+                "example": "Parse error"
+              }
+            }
+          },
+          "id": {
+            "nullable": true,
+            "example": null
           }
         }
       },
@@ -5793,6 +6083,67 @@
                 "message": "Xenon could not verify access to this session. Try again.",
                 "stacktrace": ""
               }
+            }
+          }
+        }
+      },
+      "IdentityOAuthError": {
+        "description": "An OAuth error (RFC 6749 §5.2): `invalid_request`, `invalid_client`, `invalid_grant`,\n`invalid_scope`, `invalid_target`, `invalid_redirect_uri`, `invalid_client_metadata`,\n`unsupported_grant_type` or `too_many_requests`, with `error_description`.\n",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/IdentityOAuthErrorBody"
+            },
+            "example": {
+              "error": "invalid_target",
+              "error_description": "resource must be this hub's MCP endpoint, https://xenon.example.com/xenon/mcp"
+            }
+          }
+        }
+      },
+      "IdentityOAuthTooManyRequests": {
+        "description": "Too many requests from this address; try again after `Retry-After` seconds.",
+        "headers": {
+          "Retry-After": {
+            "$ref": "#/components/headers/Retry-After"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/IdentityOAuthErrorBody"
+            },
+            "example": {
+              "error": "too_many_requests",
+              "error_description": "Too many token requests from this address"
+            }
+          }
+        }
+      },
+      "IdentityConsentNeedsDashboard": {
+        "description": "Not a dashboard sign-in. Consent is given in the dashboard, signed in.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "dashboard_sign_in_required",
+              "message": "Allow or deny an agent from the dashboard, signed in"
+            }
+          }
+        }
+      },
+      "IdentityConsentNotFound": {
+        "description": "No such sign-in waiting (unknown, already answered or older than 10 minutes).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "not_found",
+              "message": "Sign-in request not found"
             }
           }
         }
@@ -12991,7 +13342,7 @@
       "post": {
         "operationId": "mintBearerToken",
         "summary": "Mint a short-lived signed token",
-        "description": "Mints an RS256 JWT for the caller, signed by this server and verifiable with\n`/api/auth/jwks.json`. Any signed-in user may call it.\n\n- `audience: xenon-rest` (the default): a bearer token for this REST API, valid 1 hour. It\n  carries the caller's role, the scopes of the credential used to mint it and its bound team.\n- `audience: xenon-mcp`: a token for an MCP gateway, valid 24 hours by default\n  (`XENON_MCP_TOKEN_TTL_SEC`). It carries granular `scopes` (by default `appium:use` and\n  `xenon:devices:read`, as far as the caller's scopes allow) and, as a REST bearer token, only\n  the flat scopes those need (`appium:use` gives `sessions`, `xenon:devices:lock` gives\n  `devices`). When the grant includes `appium:use` the answer also has a `sessionToken`\n  (audience `xenon-session`, same lifetime) to put in an Appium session's\n  `xe:options.sessionToken`. It carries the `sessions` scope, and `admin` only when the\n  credential minting it has `admin` and the grant is the default one (no `scopes` asked for) or\n  a full-admin one. With `admin` a session may use a lease someone else made, and only while\n  its user is still an `ADMIN` (a `SUPER_ADMIN`'s session may, `admin` or not). A credential\n  without `sessions` or `admin`, a read-only one for instance, gets no `sessionToken`.\n\n**Never longer than the credential.** A token minted with a Bearer token, or with an API key\nthat expires, ends no later than that credential: `expiresIn` is cut to what is left of it. A\ncredential with no time left answers `400`. A dashboard sign-in renews itself, so its tokens get\nthe full lifetime.\n\n**Scopes follow the role.** A token's scopes are fixed when it is minted, but its `admin` scope\nstops counting once its user is a `MEMBER`: the API and per-command auth read the token's scopes\nwithout it.\n\nGranular scopes a credential may grant: `read` gives `xenon:devices:read` and\n`xenon:analytics:read`; `sessions` gives `appium:use`, `xenon:recordings` and `xenon:execute`;\n`devices` gives `xenon:devices:read`, `xenon:devices:lock` and `xenon:recordings`; `admin` gives\nall of them. `xenon:execute` (the `xenon_execute_script` tool, which runs Xenon's `xe:` scripts on\nthe agent's own session) is never in the default grant, and adds no scope on the API.\n\nCookie callers need a same-host `Origin` or `Referer`.\n",
+        "description": "Mints an RS256 JWT for the caller, signed by this server and verifiable with\n`/api/auth/jwks.json`. Any signed-in user may call it.\n\n- `audience: xenon-rest` (the default): a bearer token for this REST API, valid 1 hour. It\n  carries the caller's role, the scopes of the credential used to mint it and its bound team.\n- `audience: xenon-mcp`: a token for an MCP gateway, valid 24 hours by default\n  (`XENON_MCP_TOKEN_TTL_SEC`). It carries granular `scopes` (by default `appium:use` and\n  `xenon:devices:read`, as far as the caller's scopes allow) and, as a REST bearer token, only\n  the flat scopes those need (`appium:use` gives `sessions`, `xenon:devices:lock` and\n  `xenon:recordings` give `devices`). When the grant includes `appium:use` the answer also has a `sessionToken`\n  (audience `xenon-session`, same lifetime) to put in an Appium session's\n  `xe:options.sessionToken`. It carries the `sessions` scope, and `admin` only when the\n  credential minting it has `admin` and the grant is the default one (no `scopes` asked for) or\n  a full-admin one. With `admin` a session may use a lease someone else made, and only while\n  its user is still an `ADMIN` (a `SUPER_ADMIN`'s session may, `admin` or not). A credential\n  without `sessions` or `admin`, a read-only one for instance, gets no `sessionToken`.\n\n**Never longer than the credential.** A token minted with a Bearer token, or with an API key\nthat expires, ends no later than that credential: `expiresIn` is cut to what is left of it. A\ncredential with no time left answers `400`. A dashboard sign-in renews itself, so its tokens get\nthe full lifetime.\n\n**Scopes follow the role.** A token's scopes are fixed when it is minted, but its `admin` scope\nstops counting once its user is a `MEMBER`: the API and per-command auth read the token's scopes\nwithout it.\n\nGranular scopes a credential may grant: `read` gives `xenon:devices:read` and\n`xenon:analytics:read`; `sessions` gives `appium:use` and `xenon:execute`; `devices` gives\n`xenon:devices:read`, `xenon:devices:lock` and `xenon:recordings`; `admin` gives all of them. `xenon:execute` (the `xenon_execute_script` tool, which runs Xenon's `xe:` scripts on\nthe agent's own session) is never in the default grant, and adds no scope on the API.\n\nCookie callers need a same-host `Origin` or `Referer`.\n",
         "tags": [
           "Authentication"
         ],
@@ -13090,7 +13441,7 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "An MCP scope the caller's credential can't grant (`scope_exceeds_key`), or the same-origin\ncheck failed.\n",
+            "description": "An MCP scope the caller's credential can't grant (`scope_exceeds_key`), the same-origin\ncheck failed, or the caller is an agent signed in through the browser\n(`agent_sign_in_cannot_make_credentials`): a token it made would outlive its sign-in.\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -13106,6 +13457,12 @@
                   "csrf": {
                     "value": {
                       "error": "CSRF: Origin or Referer header required"
+                    }
+                  },
+                  "agent": {
+                    "value": {
+                      "error": "agent_sign_in_cannot_make_credentials",
+                      "message": "An agent signed in through the browser cannot make keys, tokens or passwords; do this from the dashboard"
                     }
                   }
                 }
@@ -13178,14 +13535,24 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "A credential other than a dashboard sign-in, without the `admin` scope.",
+            "description": "A credential other than a dashboard sign-in, without the `admin` scope, or an agent signed\nin through the browser (`agent_sign_in_cannot_make_credentials`).\n",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 },
-                "example": {
-                  "error": "rotating the access key needs a dashboard sign-in or a credential with the admin scope"
+                "examples": {
+                  "credential": {
+                    "value": {
+                      "error": "rotating the access key needs a dashboard sign-in or a credential with the admin scope"
+                    }
+                  },
+                  "agent": {
+                    "value": {
+                      "error": "agent_sign_in_cannot_make_credentials",
+                      "message": "An agent signed in through the browser cannot make keys, tokens or passwords; do this from the dashboard"
+                    }
+                  }
                 }
               }
             }
@@ -13324,7 +13691,27 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "$ref": "#/components/responses/Forbidden"
+            "description": "The credential lacks the scope this needs, or the caller is an agent signed in through the\nbrowser (`agent_sign_in_cannot_make_credentials`): a token it made would outlive its sign-in.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "scope": {
+                    "value": {
+                      "error": "insufficient scope"
+                    }
+                  },
+                  "agent": {
+                    "value": {
+                      "error": "agent_sign_in_cannot_make_credentials",
+                      "message": "An agent signed in through the browser cannot make keys, tokens or passwords; do this from the dashboard"
+                    }
+                  }
+                }
+              }
+            }
           },
           "404": {
             "$ref": "#/components/responses/IdentityUserNotFound"
@@ -13502,14 +13889,24 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "Your role is below `ADMIN`, or you may not create an account with that role.",
+            "description": "Your role is below `ADMIN`, or you may not create an account with that role, or the caller\nis an agent signed in through the browser (`agent_sign_in_cannot_make_credentials`).\n",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 },
-                "example": {
-                  "error": "cannot create user with role ADMIN"
+                "examples": {
+                  "role": {
+                    "value": {
+                      "error": "cannot create user with role ADMIN"
+                    }
+                  },
+                  "agent": {
+                    "value": {
+                      "error": "agent_sign_in_cannot_make_credentials",
+                      "message": "An agent signed in through the browser cannot make keys, tokens or passwords; do this from the dashboard"
+                    }
+                  }
                 }
               }
             }
@@ -13734,14 +14131,24 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "Your role is below `ADMIN`, or too low for this account.",
+            "description": "Your role is below `ADMIN` (an agent signed in through the browser counts as a member), or\ntoo low for this account, or the caller is an agent signed in through the browser\n(`agent_sign_in_cannot_make_credentials`): a reset link is a way into another account.\n",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 },
-                "example": {
-                  "error": "insufficient permissions for this target"
+                "examples": {
+                  "role": {
+                    "value": {
+                      "error": "insufficient permissions for this target"
+                    }
+                  },
+                  "agent": {
+                    "value": {
+                      "error": "agent_sign_in_cannot_make_credentials",
+                      "message": "An agent signed in through the browser cannot make keys, tokens or passwords; do this from the dashboard"
+                    }
+                  }
                 }
               }
             }
@@ -14258,7 +14665,27 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "$ref": "#/components/responses/Forbidden"
+            "description": "The credential lacks the `admin` scope, or the caller is an agent signed in through the\nbrowser (`agent_sign_in_cannot_make_credentials`): a key it made would outlive its sign-in.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "scope": {
+                    "value": {
+                      "error": "insufficient scope"
+                    }
+                  },
+                  "agent": {
+                    "value": {
+                      "error": "agent_sign_in_cannot_make_credentials",
+                      "message": "An agent signed in through the browser cannot make keys, tokens or passwords; do this from the dashboard"
+                    }
+                  }
+                }
+              }
+            }
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -14528,7 +14955,7 @@
       "get": {
         "operationId": "getServerCapabilities",
         "summary": "Get the server's version and features",
-        "description": "Feature detection for SDKs and tools: the server's version, its WebDriver base path\n(`webDriverBasePath`) and which features it has. Most are always `true` in this version;\n`sessionTokenGate` (`XENON_REQUIRE_SESSION_TOKEN`), `commandAuth`\n(`XENON_REQUIRE_COMMAND_AUTH`), `leasing` (whether a node's phone can be leased) and\n`tokenLogFilter` (the server's `log-filters`) report the live settings, and\n`traceContext.exporting` whether this server exports traces. Any signed-in user may call it.\n",
+        "description": "Feature detection for SDKs and tools: the server's version, its WebDriver base path\n(`webDriverBasePath`) and which features it has. Most are always `true` in this version;\n`sessionTokenGate` (`XENON_REQUIRE_SESSION_TOKEN`), `commandAuth`\n(`XENON_REQUIRE_COMMAND_AUTH`), `leasing` (whether a node's phone can be leased) and\n`tokenLogFilter` (the server's `log-filters`) report the live settings, and\n`traceContext.exporting` whether this server exports traces. `mcpServer`, on a hub or a\nstandalone server only, is the tools for AI coding agents: `url` is the endpoint agents\nare given (`XENON_PUBLIC_URL`'s origin when set, else the request's), the address the\ndashboard's AI agents page shows. Any signed-in user may call it.\n",
         "tags": [
           "Health & Ops"
         ],
@@ -14587,6 +15014,25 @@
                       "proxyShaped": [
                         "androidDevice"
                       ]
+                    },
+                    "mcpServer": {
+                      "path": "/xenon/mcp",
+                      "url": "https://xenon.example.com/xenon/mcp",
+                      "oauth": true,
+                      "contractVersion": 1,
+                      "tools": [
+                        "xenon_lab_info",
+                        "xenon_list_devices",
+                        "xenon_acquire_device",
+                        "xenon_release_device",
+                        "xenon_extend_device",
+                        "xenon_selector_health",
+                        "xenon_healing_events",
+                        "xenon_start_recording",
+                        "xenon_stop_recording",
+                        "xenon_execute_script",
+                        "xenon_session_capabilities"
+                      ]
                     }
                   }
                 }
@@ -14595,6 +15041,704 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/oauth/register": {
+      "post": {
+        "operationId": "registerOAuthClient",
+        "summary": "Register an agent (dynamic client registration)",
+        "description": "Public. RFC 7591 dynamic client registration for an AI agent that signs in to `/mcp`.\nEvery agent is a public client: no client secret is made or kept, whatever\n`token_endpoint_auth_method` the request names, and PKCE proves the agent at the token step.\n\nRedirect URIs (at least one, at most 10): loopback (`http://127.0.0.1`, `http://[::1]`,\n`http://localhost`, any port), any `https` URL, or an app's own scheme\n(`cursor://...`). No fragment and no user name. An agent may instead use an `https` URL\nas its `client_id` (a client ID metadata document) and skip registering, unless the hub\nhas `XENON_MCP_CLIENT_DOCUMENTS=off` (a lab that can't reach the internet), which its\nmetadata then says.\n\n**Limits.** 20 requests an hour from one address, counted as `trustProxy` reads it (an\nIPv6 address by its /64), failed ones included; past that `429`. Past 20 registrations\nan hour from one address, or with 500 agents each signed in or registered in the last 10\nminutes, a registration is `400 too_many_requests`. An agent unused for 30 days is\nforgotten.\n\nServed on a hub or a standalone server with sign-in on: on a node, or with auth disabled,\nit answers `404`.\n",
+        "tags": [
+          "Agent sign-in"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentityOAuthClientMetadata"
+              },
+              "example": {
+                "client_name": "Claude Code",
+                "redirect_uris": [
+                  "http://127.0.0.1:47831/callback"
+                ],
+                "grant_types": [
+                  "authorization_code",
+                  "refresh_token"
+                ],
+                "response_types": [
+                  "code"
+                ],
+                "token_endpoint_auth_method": "none"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Registered.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityOAuthClient"
+                },
+                "example": {
+                  "client_id": "3f6c2a9e-1b4d-4e8f-9a7c-2d5e6f708192",
+                  "client_id_issued_at": 1763200000,
+                  "client_name": "Claude Code",
+                  "redirect_uris": [
+                    "http://127.0.0.1:47831/callback"
+                  ],
+                  "token_endpoint_auth_method": "none",
+                  "grant_types": [
+                    "authorization_code",
+                    "refresh_token"
+                  ],
+                  "response_types": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/IdentityOAuthError"
+          },
+          "429": {
+            "$ref": "#/components/responses/IdentityOAuthTooManyRequests"
+          }
+        }
+      }
+    },
+    "/api/oauth/authorize": {
+      "get": {
+        "operationId": "authorizeOAuthClient",
+        "summary": "Start an agent's sign-in in the browser",
+        "description": "Public. The OAuth authorization endpoint, opened in the user's browser by the agent.\nNeeds `response_type=code`, `client_id`, PKCE (`code_challenge` and\n`code_challenge_method=S256`; `plain` is refused) and, when the agent registered more\nthan one, `redirect_uri`. `resource` (RFC 8707), when sent, must be this hub's MCP\nendpoint (`<origin>/xenon/mcp`, with or without a trailing slash); a request without one\nis bound to this hub. `scope` is the MCP scopes asked for; the user's role cuts them.\n\nThe redirect URI must be one the agent registered, exactly, except that a loopback one\nmay name any port (RFC 8252).\n\nAnything wrong before the user has consented is answered here, never by a redirect to the\nagent: an unknown client or redirect URI, a `response_type` other than `code`, a missing,\nplain or malformed PKCE challenge, `scope` or `state` given twice (`400\ninvalid_request`), a `resource` that isn't this hub (`400 invalid_target`), and too many\nsign-ins waiting (`429`). An agent can register any https redirect URI, and a redirect\nthere on an error would send the user from the hub's own link to any page. Otherwise the\nrequest waits 10 minutes for the user's answer (at most 10 waiting from one address; a\nnew one drops that address's oldest), and the browser goes to the dashboard's consent page,\n`/xenon/oauth/consent/<requestId>`, signed in or not: the dashboard's cookie is\nSameSite=Strict, so the browser an agent opens carries none here. The page's own requests\ncarry it, and a signed-out visitor is sent to sign in and back to the page.\n\n**Discovery.** Agents find this route from two documents on the server's root, outside\n`/xenon`: the protected-resource metadata (RFC 9728) at\n`/.well-known/oauth-protected-resource/xenon/mcp` (and the root form,\n`/.well-known/oauth-protected-resource`), which `/mcp`'s `401` names, and the\nauthorization-server metadata (RFC 8414) at `/.well-known/oauth-authorization-server`.\nBoth name the hub by `XENON_PUBLIC_URL` when it is set, else by the request's scheme and\nhost (a reverse proxy's forwarded ones only with `trustProxy`), plain HTTP included.\n\n**Limit.** 100 requests per 15 minutes from one address; past that `429`.\n",
+        "tags": [
+          "Agent sign-in"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "response_type",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "code"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "client_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "redirect_uri",
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code_challenge",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code_challenge_method",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "S256"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "type": "string",
+              "example": "appium:use xenon:devices:read"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "resource",
+            "schema": {
+              "type": "string",
+              "format": "uri",
+              "example": "https://xenon.example.com/xenon/mcp"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "To the consent page.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string",
+                  "example": "/xenon/oauth/consent/Qm9vb3RzdHJhcHBlZC1yZXF1ZXN0LWlk"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/IdentityOAuthError"
+          },
+          "429": {
+            "$ref": "#/components/responses/IdentityOAuthTooManyRequests"
+          }
+        }
+      }
+    },
+    "/api/oauth/token": {
+      "post": {
+        "operationId": "exchangeOAuthToken",
+        "summary": "Get or refresh an agent's tokens",
+        "description": "Public. The OAuth token endpoint, `application/x-www-form-urlencoded`, with `client_id`.\n\n- `grant_type=authorization_code` with `code`, `code_verifier` and the `redirect_uri` the\n  code was issued for. A code lasts 60 seconds and works once; a code sent a second time\n  revokes the sign-in the first use made.\n- `grant_type=refresh_token` with `refresh_token`, and `scope` to narrow (never widen) the\n  scopes. Every refresh rotates the refresh token; one presented again after its use\n  revokes the whole sign-in.\n\n`resource`, when sent, must be this hub's MCP endpoint (with or without a trailing slash),\nelse `invalid_target`, before the code or refresh token is used. The access token is the\n`xenon-mcp` bearer token `/mcp` and the API take, for one hour, with the granted scopes\ncut to the user's role, which is looked up at every exchange. It never carries the\n`admin` scope, an admin's included, so the routes that need it refuse an agent signed in\nthrough the browser. Nor does the user's role make the agent an admin: an admin's agent\nacts with member rights plus every team's phones, and routes that need the `ADMIN` or\n`SUPER_ADMIN` role refuse it (`requires role >= ADMIN`). A refresh token lasts 30 days unused and 90 days in all; one presented again after\nits use is remembered as long as it could have worked (the 30 days unused).\n\n**Limit.** 50 requests per 15 minutes from one address; past that `429`.\n",
+        "tags": [
+          "Agent sign-in"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentityOAuthTokenRequest"
+              },
+              "example": {
+                "grant_type": "authorization_code",
+                "client_id": "3f6c2a9e-1b4d-4e8f-9a7c-2d5e6f708192",
+                "code": "7JzK2Qe9-example-code",
+                "code_verifier": "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+                "redirect_uri": "http://127.0.0.1:47831/callback",
+                "resource": "https://xenon.example.com/xenon/mcp"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The tokens.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityOAuthTokens"
+                },
+                "example": {
+                  "access_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6Ii4uLiJ9.eyJhdWQiOiJ4ZW5vbi1tY3AifQ.sig",
+                  "token_type": "Bearer",
+                  "expires_in": 3600,
+                  "scope": "appium:use xenon:devices:read",
+                  "refresh_token": "k3Vh2r-example-refresh-token"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/IdentityOAuthError"
+          },
+          "429": {
+            "$ref": "#/components/responses/IdentityOAuthTooManyRequests"
+          },
+          "500": {
+            "description": "The server can't sign tokens right now (`server_error`); nothing was used up.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityOAuthErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/oauth/revoke": {
+      "post": {
+        "operationId": "revokeOAuthToken",
+        "summary": "Sign an agent out (token revocation)",
+        "description": "Public. RFC 7009, `application/x-www-form-urlencoded`, with `client_id` and `token`: a\nrefresh or access token of that agent revokes its sign-in at once. Anything else (an\nunknown token, another agent's) changes nothing. Always `200` for a known client.\n\n**Limit.** 50 requests per 15 minutes from one address; past that `429`.\n",
+        "tags": [
+          "Agent sign-in"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "client_id",
+                  "token"
+                ],
+                "properties": {
+                  "client_id": {
+                    "type": "string"
+                  },
+                  "token": {
+                    "type": "string"
+                  },
+                  "token_type_hint": {
+                    "type": "string",
+                    "enum": [
+                      "refresh_token",
+                      "access_token"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Revoked, or nothing to revoke.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                },
+                "example": {}
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/IdentityOAuthError"
+          },
+          "429": {
+            "$ref": "#/components/responses/IdentityOAuthTooManyRequests"
+          }
+        }
+      }
+    },
+    "/api/oauth/consent/{requestId}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "requestId",
+          "required": true,
+          "description": "The waiting sign-in, from the consent page's address.",
+          "schema": {
+            "type": "string",
+            "example": "Qm9vb3RzdHJhcHBlZC1yZXF1ZXN0LWlk"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getOAuthConsentRequest",
+        "summary": "Read a sign-in waiting for consent",
+        "description": "The dashboard's consent page reads the sign-in it asks about: the agent, this hub, where\nthe browser goes back to and the scopes the signed-in user would grant (those asked for,\ncut to the user's role). Only a signed-in dashboard user (the cookie): any other\ncredential is `403`. A request waits 10 minutes; an unknown, answered or expired one is\n`404`.\n",
+        "tags": [
+          "Agent sign-in"
+        ],
+        "security": [
+          {
+            "CookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The waiting sign-in.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityConsentRequest"
+                },
+                "example": {
+                  "requestId": "Qm9vb3RzdHJhcHBlZC1yZXF1ZXN0LWlk",
+                  "client": {
+                    "id": "3f6c2a9e-1b4d-4e8f-9a7c-2d5e6f708192",
+                    "name": "Claude Code"
+                  },
+                  "hub": "https://xenon.example.com",
+                  "redirectUri": "http://127.0.0.1:47831/callback",
+                  "scopes": [
+                    "appium:use",
+                    "xenon:devices:read"
+                  ],
+                  "expiresAt": "2026-11-15T10:10:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/IdentityConsentNeedsDashboard"
+          },
+          "404": {
+            "$ref": "#/components/responses/IdentityConsentNotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      },
+      "post": {
+        "operationId": "answerOAuthConsentRequest",
+        "summary": "Allow or deny an agent's sign-in",
+        "description": "The signed-in user's answer, once. Only a dashboard sign-in (the cookie), with a\nsame-host `Origin` or `Referer`, like every state-changing request the dashboard sends;\nany other credential is `403`.\n\nThe answer is JSON, `{ redirectTo }`: the agent's redirect URI with `code` and `state`\nafter Allow, `error=access_denied` and `state` after Deny, or `error=invalid_scope` and\n`state` after Allow when none of the scopes the agent asked for can be granted to this\nuser (no code is issued). The page sends the browser\nthere; a page's fetch can't follow a redirect to an app's own scheme or a loopback port.\nA `429` (too many sign-ins in progress) leaves the request waiting, to answer again.\n",
+        "tags": [
+          "Agent sign-in"
+        ],
+        "security": [
+          {
+            "CookieAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "allow"
+                ],
+                "properties": {
+                  "allow": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "example": {
+                "allow": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Where the browser goes back to the agent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "redirectTo"
+                  ],
+                  "properties": {
+                    "redirectTo": {
+                      "type": "string",
+                      "format": "uri"
+                    }
+                  }
+                },
+                "example": {
+                  "redirectTo": "http://127.0.0.1:47831/callback?code=7JzK2Qe9-example-code&state=af0ifjsldkj"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`allow` is not `true` or `false`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "invalid_request",
+                  "message": "`allow` must be true or false"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Not a dashboard sign-in, or the same-origin check failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "dashboard_sign_in_required",
+                  "message": "Allow or deny an agent from the dashboard, signed in"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/IdentityConsentNotFound"
+          },
+          "429": {
+            "description": "Too many sign-ins are in progress (`too_many_requests`), or the user's request budget\nis spent. The sign-in still waits.\n",
+            "headers": {
+              "Retry-After": {
+                "$ref": "#/components/headers/Retry-After"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityOAuthErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/oauth/grants": {
+      "get": {
+        "operationId": "listOAuthGrants",
+        "summary": "List my signed-in agents",
+        "description": "The caller's own agent sign-ins that still work, most recently used first: one per\nbrowser sign-in (OAuth), however often the agent has refreshed it since. Any credential\nREST takes; the list is always the caller's own. With auth disabled there is no sign-in,\nand this is `404`.\n",
+        "tags": [
+          "Agent sign-in"
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's signed-in agents.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IdentityAgentGrant"
+                  }
+                },
+                "example": [
+                  {
+                    "id": "6f1c8e2a-4b3d-4a5e-9f70-1b2c3d4e5f60",
+                    "clientName": "Claude Code",
+                    "scopes": [
+                      "appium:use",
+                      "xenon:devices:read",
+                      "xenon:devices:lock"
+                    ],
+                    "createdAt": "2026-11-15T09:00:00.000Z",
+                    "lastUsedAt": "2026-11-15T10:00:00.000Z"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "A credential that names no user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "forbidden",
+                  "message": "Agent sign-ins belong to a user"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Auth is disabled on this server, so it signs no agent in and serves no such route.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": true,
+                  "message": "API endpoint GET /xenon/api/oauth/grants not found"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "revokeUserOAuthGrants",
+        "summary": "Revoke every signed-in agent of a user",
+        "description": "Admins only (an admin's dashboard sign-in, or a credential with the `admin` scope):\nrevokes every live agent sign-in of `userId`, as revoking each one does. Answers how many\nwere revoked. A user made Inactive or deleted has theirs revoked without this.\n",
+        "tags": [
+          "Agent sign-in"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "userId",
+            "required": true,
+            "description": "The user whose agents to sign out.",
+            "schema": {
+              "type": "string",
+              "example": "4f8d2a1b-3c6e-4b7a-8d9f-0e1c2b3a4d5e"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "How many sign-ins were revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "revoked"
+                  ],
+                  "properties": {
+                    "revoked": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "example": {
+                  "revoked": 2
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No `userId`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "invalid_request",
+                  "message": "Name the user: ?userId=<id>"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "The caller isn't an admin (`requires role >= ADMIN`), as an agent signed in through the\nbrowser never is, an admin's included; or is one without the `admin` scope\n(`insufficient scope`).\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "role": {
+                    "value": {
+                      "error": "requires role >= ADMIN"
+                    }
+                  },
+                  "scope": {
+                    "value": {
+                      "error": "insufficient scope"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Auth is disabled on this server, so it signs no agent in and serves no such route.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": true,
+                  "message": "API endpoint DELETE /xenon/api/oauth/grants?userId=4f8d2a1b-3c6e-4b7a-8d9f-0e1c2b3a4d5e not found"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/oauth/grants/{grantId}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "grantId",
+          "required": true,
+          "description": "The sign-in, from the list.",
+          "schema": {
+            "type": "string",
+            "example": "6f1c8e2a-4b3d-4a5e-9f70-1b2c3d4e5f60"
+          }
+        }
+      ],
+      "delete": {
+        "operationId": "revokeOAuthGrant",
+        "summary": "Revoke a signed-in agent",
+        "description": "Signs the agent out at once: its access tokens are refused from the next request, on\n`/mcp`, the REST API and WebDriver commands alike, its refresh token stops working, and\nevery device lease it holds ends (`endReason` `grant_revoked`). The caller's own\nsign-in, or any user's for an admin whose credential carries the `admin` scope (as the\nbulk revoke asks). Another user's sign-in, an unknown one and one already revoked are\nthe same `404`, and so is every request with auth disabled, where nobody signs in.\n\nAny credential of the user may revoke their sign-ins, an agent's own access token\nincluded: an agent can sign out its user's other agents, or itself.\n\nAn Appium session the agent already started goes on: unless `XENON_REQUIRE_COMMAND_AUTH`\nis on, its commands are authorized by the session id. A recording it started keeps its\nphones until the user or an admin stops it.\n",
+        "tags": [
+          "Agent sign-in"
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "A credential that names no user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "forbidden",
+                  "message": "Agent sign-ins belong to a user"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such sign-in of the caller's (or, for an admin, of anyone's), or auth is disabled on\nthis server (the API's unknown-route answer: `error: true`, \"API endpoint DELETE ...\nnot found\").\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "not_found",
+                  "message": "Agent sign-in not found"
+                }
+              }
+            }
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -17856,6 +19000,136 @@
           },
           "500": {
             "$ref": "#/components/responses/RecordingInternalError"
+          }
+        }
+      }
+    },
+    "/mcp": {
+      "post": {
+        "operationId": "callMcp",
+        "summary": "Send an MCP request",
+        "description": "The lab's tools for AI coding agents, over the Model Context Protocol's Streamable HTTP\ntransport. The body is one JSON-RPC message (`initialize`, `tools/list`, `tools/call`,\n...); send `Accept: application/json, text/event-stream`. Each request is answered on its\nown, as JSON, with no MCP session to keep. Any other method answers `405` with\n`Allow: POST`: no tool sends messages of its own yet, so there is no standing stream to\nopen (`GET`) and no session to end (`DELETE`).\n\nServed on a hub or a standalone server, never on a node. It takes the credentials the\nAPI takes in headers: the access key and token, a bearer token (audience `xenon-mcp` or\n`xenon-rest`), or the access key and token as Basic auth. Never the dashboard cookie.\nA tool is listed only when the credential's scopes grant it. `/api/capabilities` names\nthe tools under `features.mcpServer`.\n",
+        "tags": [
+          "MCP"
+        ],
+        "security": [
+          {
+            "AccessKeyAuth": [],
+            "TokenAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "A JSON-RPC 2.0 request or notification.",
+                "required": [
+                  "jsonrpc",
+                  "method"
+                ],
+                "properties": {
+                  "jsonrpc": {
+                    "type": "string",
+                    "example": "2.0"
+                  },
+                  "id": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "method": {
+                    "type": "string",
+                    "example": "tools/call"
+                  },
+                  "params": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              },
+              "example": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                  "name": "xenon_lab_info",
+                  "arguments": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The JSON-RPC answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "A notification was accepted; there is no answer."
+          },
+          "400": {
+            "description": "The body isn't JSON, or isn't a JSON-RPC message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformJsonRpcError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or one that is wrong, expired or revoked. `WWW-Authenticate` names\nwhere an agent learns how to sign in: `Bearer resource_metadata=\"<origin>/.well-known/oauth-protected-resource/xenon/mcp\"`.\n",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string",
+                  "example": "Bearer resource_metadata=\"https://xenon.example.com/.well-known/oauth-protected-resource/xenon/mcp\""
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "unauthenticated"
+                }
+              }
+            }
+          },
+          "406": {
+            "description": "`Accept` doesn't take both `application/json` and `text/event-stream`."
+          },
+          "503": {
+            "description": "The credential couldn't be checked (the database or the signing key is unavailable); try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "unavailable"
+                }
+              }
+            }
           }
         }
       }

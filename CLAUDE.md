@@ -2396,9 +2396,233 @@ A network profile (`xe:network_profile`: `Offline` turns Wi-Fi and mobile data o
   only: no UDP, DNS or proxy-ignoring apps. `features.networkProfiles.proxyShaped`,
   flag `real-phone-shaping`.
 
+### Xenon's MCP server (`src/mcp/`, `src/services/oauth/`, `src/app/routers/oauth.ts`)
+
+The lab's tools for AI coding agents, at `/xenon/mcp` (MCP Streamable HTTP,
+`@modelcontextprotocol/sdk`), with browser sign-in (OAuth 2.1). It replaces
+Xenon Studio's `hosted-mcp` gateway for the lab tools; the tools keep Studio's
+names, descriptions and arguments (`authToken` accepted and ignored). User
+docs: `website/docs/ai-agents.mdx`. Design:
+`docs/superpowers/specs/2026-11-15-hub-mcp-server-design.md`.
+
+**The endpoint** (`mcpEndpoint.ts`). On the `/xenon` router beside `/api` and
+outside its login. Served on a hub or standalone server whatever
+`enableDashboard` says, never on a node (`servesMcp`: no `hub` option), which
+also decides `features.mcpServer` and `/sdk/version`'s `mcp-server`
+(`features.mcpServer.oauth` is false with auth disabled).
+
+- Stateless: each POST gets its own `McpServer` and transport, no MCP session,
+  JSON answers (`enableJsonResponse`). Every other method is `405`.
+- Credentials (`resolveMcpCaller`): the key pair (headers, or Basic), or a
+  Bearer `xenon-mcp`/`xenon-rest`, each by REST's verifier. Never the dashboard
+  cookie: a browser sends it with any page's request. No credential is `401`
+  with `WWW-Authenticate` naming the protected-resource metadata; a check that
+  could not run is `503`. Basic `xenon-session` isn't read here.
+- A request with an `Origin` other than this server's own (`publicOrigin`) is
+  `403 forbidden_origin` before credentials are read, and the static router's
+  wildcard `cors()` skips `/mcp`. With auth disabled that is all that stands in
+  the way. It doesn't stop DNS rebinding while `XENON_PUBLIC_URL` is unset (no
+  Host allowlist, as for `/xenon/api`).
+- `publicOrigin(req)` is `XENON_PUBLIC_URL`'s origin, else the request's
+  scheme and host, forwarded ones only through `trust proxy`. The metadata,
+  the OAuth `resource`, the consent page's hub, `features.mcpServer.url` and
+  the URLs tools hand out (`callerOrigin`) all use it.
+
+**Tools** (`toolRegistry.ts`, `tools/*.ts`, `defineTool` in `tool.ts`). Each
+declares one MCP scope (null for `xenon_lab_info`); `toolsFor` lists only
+those the caller holds (`mcpScopesOf`: a bearer token's `scope` claim, else
+what its flat scopes allow), every tool with auth disabled. `runTool`
+(`toolCall.ts`) wraps each call: a per-user budget (`admit('mcp:<userId>',
+…, 'control')`, the REST limiter's buckets), a span (`startToolSpan`), one
+event-log entry (`mcp_tool_call`: user, tool, outcome, duration; no
+arguments, no answer). A `ToolRefusal` is a tool error with REST's `error` and
+message; anything else is `internal`, details only in the log. Never a
+protocol error.
+
+- **`invokeApi`** runs a `/xenon/api` route in process as the caller: a
+  request on an unconnected socket, through the API router's own middleware
+  (CSRF, login, rate limit) and route, so team rules, ownership, scopes and
+  answers are REST's, and a call also spends the caller's REST budget. The
+  router runs in an Express 4 app with Express 5's query parser
+  (`serveToolsFrom`); Appium 3 serves it under Express 5.
+  `API_CALL_TIMEOUT_MS` (30 s), then `ToolRefusal('timeout')`.
+- **`invokeWebDriver`** runs one WebDriver command through Appium's own app
+  (`PluginContext.expressApp`) at `<basePath>/session/<id>/...`: the session
+  gateway (per-command auth with the preset caller, a node's session
+  forwarded), then the plugin's interceptor. Never `/wd-internal`.
+  `WEBDRIVER_CALL_TIMEOUT_MS` (5 min: a heal can wait on two AI calls). Its
+  owner check only runs with per-command auth on, so a tool that drives a
+  session checks ownership itself (`execute.ts`, `decideCallerAccess`
+  whatever the setting).
+- **`PRESET_CALLER`**: both put the caller on the request object under this
+  symbol (`mcpContextOf` reads it). `authMiddleware`, per-command auth and
+  `csrfMiddleware` take it; `sdk-leases.ts` reads it to make a lease
+  heartbeat-free.
+- `xenon_healing_events` asks `GET /session/:id` first, so an unknown or
+  hidden session is REST's not-found (Studio answered `[]`).
+  `xenon_execute_script` needs `sessionId` (the hub has no current session),
+  and runs only a name in `XENON_SCRIPT_NAMES` alone after its prefix
+  (`xenonScriptName`): `xe: document.title` is labelled JavaScript in a
+  webview, which the driver would run, so it and an unknown name are
+  `bad_request` before the session is looked up. CommandInterceptor answers
+  local `xe:` scripts before its hooks, so a session on the hub's own phones
+  gets no `SessionLog` row for them; a node session's is recorded by the
+  hub's gateway hooks (dashboard on).
+- `xenon_session_capabilities` mints a `xenon-session` token
+  (`mintSessionToken`, with the caller's `gid`), and with a lease puts member
+  0's capabilities, `leaseId`, `leaseToken` and `leaseMember` in
+  `xe:options`. With per-command auth on, `remoteServerUrl` carries the token
+  as Basic `xenon-session:<token>`. The token lives `XENON_MCP_TOKEN_TTL_SEC`
+  and the tool answers `expiresAt` (epoch ms). For a grant-bound caller
+  (`grantId`) that is the whole TTL, not the access token's remaining hour:
+  the token carries `gid` and is refused the moment its grant is revoked.
+  Any other caller's is cut to its credential's remaining life
+  (`mintedLifetimeSec`).
+
+**Agent leases.** `xenon_acquire_device` is `POST /sdk/leases` through
+`invokeApi`, so the lease is heartbeat-free (see "Device leases"), 15 minutes
+by default, `durationMs` within `LeaseService.create`'s 1 minute to 24 hours;
+`xenon_extend_device` is `extend`. `GET /devices` gives a tool's caller
+`myLease` (lockId, expiresAt) on their own leased phones (`grid.ts`, MCP
+calls only).
+
+**Sign-in** (`oauth.ts`, `src/services/oauth/`). The hub is resource and
+authorization server, built from the SDK's individual handlers (its
+`mcpAuthRouter` and `createOAuthMetadata` refuse a plain-HTTP issuer, and labs
+run `http://lab-mac:4723`), with the SDK's own rate limiters off.
+
+- Discovery on Appium's root (`oauthWellKnownRouter`): protected-resource
+  metadata at `/.well-known/oauth-protected-resource/xenon/mcp` and the root
+  form, authorization-server metadata at
+  `/.well-known/oauth-authorization-server`. `scopes_supported` lists every
+  MCP scope; the role cuts them.
+- Clients (`ClientStore`, `McpClient`): dynamic registration, at most 20 per
+  address an hour and 500 in all, dropped after 30 days unused (a lookup by an
+  unauthenticated authorize or token call doesn't count as use). At the cap
+  the longest-unused client with no live grant is evicted, never one
+  registered in the last 10 minutes (`NEW_CLIENT_KEPT_MS`: it has no grant
+  until its user allows it). Or a client ID metadata document
+  (`clientMetadataDocument.ts`): an https URL as `client_id`, fetched only
+  from public addresses, pinned to the checked address, no redirects, 64 KB,
+  5 s, cached 10 minutes, no row. `XENON_MCP_CLIENT_DOCUMENTS=off`
+  (`clientDocumentsAccepted`, read per call) is for a lab that can't reach
+  the internet: the metadata says `client_id_metadata_document_supported:
+  false`, and a URL `client_id` is `invalid_client` without a fetch.
+- Authorize: PKCE `S256` required, `resource` (missing is bound to this hub)
+  must be this hub's MCP URL. Every bad parameter is answered to the browser
+  directly (`answerDirectly`), never by a redirect to the agent: before
+  consent the hub sends a browser only to its own pages (no open redirector).
+  The request waits (`PendingAuthorizations`, 10 minutes, 10 per address: an
+  eleventh evicts that address's oldest, whose consent page then answers
+  "Sign-in not found") and the browser always goes to
+  `/xenon/oauth/consent/<id>`: the
+  dashboard cookie is SameSite=Strict, so the agent's navigation carries none,
+  and the page's own fetches do.
+- Consent (`/oauth/consent/:id`, after CSRF and the login, a `user-session`
+  caller only): GET names the agent, hub, redirect URI and the scopes this
+  user would grant (`grantForRole`); POST `{ allow }` answers once with
+  `{ redirectTo }`. A code (`AuthCodes`) lasts 60 s and is single-use; a second
+  exchange revokes the grant the first made. Every dashboard page refuses
+  framing (`frame-ancestors 'none'`, `X-Frame-Options: DENY`, `src/app/index.ts`).
+- Tokens: the access token is the `xenon-mcp` RS256 JWT, an hour
+  (`OAUTH_ACCESS_TOKEN_TTL_SEC`), `scope` = the grant's MCP scopes cut to the
+  user's role now (`scopesForRole`, every exchange and refresh), and `gid`.
+  Never flat `admin` or `roles: ['admin']` (`grantForRole` passes
+  `resolveMcpGrant` `neverAdmin`): an agent asks for every scope, and an
+  admin's agent would otherwise pass every `scopeGuard(['admin'])` without
+  the consent page saying so.
+- **A grant-bound caller is never an admin** (`src/middleware/callerRole.ts`).
+  A credential naming a grant (a Bearer or `xenon-session` token with a
+  `gid`: `req.auth.grantId`, the MCP caller's `grantId`) is judged as a
+  MEMBER wherever Xenon decides by the user's role: `effectiveRole`, used by
+  `roleGuard` and `superAdminGuard` themselves (so every `roleGuard('ADMIN')`
+  route: `/interceptor`, `POST /register`, `/ports`, block, unblock and tags,
+  app delete, `GET /config`, users, teams, keys, webhooks, processes),
+  `isAdminCaller` (a bug report's network capture, `holdsAdminScope`),
+  `resolveActor().isAdmin` (false for a grant whatever its role or scopes:
+  the `/control` ownership guard, stream and logcat tickets, the hub's
+  control token, recordings, reservations) and `canOverrideLease` (its
+  `grantId`: per-command auth, `xenon_execute_script`, and the lease
+  override at session create, which reads the session token's `gid`).
+  `roleGuard('MEMBER')` still admits it. Team visibility is not routed
+  through it: `computeTeamIds` still gives an admin's agent every team's
+  phones (`teamIds` undefined), and what reads `teamIds === undefined` as
+  "admin" follows (an app upload into any team or the shared pool,
+  `xe:options.team` naming any team). Display (`/auth/me`'s and
+  `xenon_lab_info`'s `role`) shows the user's role. Through 2.37's review an
+  ADMIN's or SUPER_ADMIN's agent passed every role-only check (captured
+  traffic, phone rows, the lab's settings, and for a SUPER_ADMIN the
+  ownership guard and the lease override). An admin who wants an agent to
+  administer the lab gives it an API key. `POST /auth/token` keeps the
+  full-admin rule.
+  The refresh token is opaque, rotated on each use (`GrantStore.rotate`), 30
+  days unused or 90 in all (`XENON_MCP_REFRESH_IDLE_DAYS`,
+  `XENON_MCP_REFRESH_MAX_DAYS`). `McpGrant`: the row with no `rotatedFromId`
+  is the grant (its id is `gid`); each rotation adds a spent row, kept for
+  the idle window (`spentRefreshTokenMemoryMs`, `refreshIdleMs`), as long as
+  the token could have worked, so a spent token presented again any time it
+  could still have been valid revokes the grant. Every exchange and refresh looks the user
+  up: not ACTIVE is `invalid_grant` (on a refresh the grant is revoked too).
+- Auth disabled: no sign-in routes, no metadata (`signInServed` falls through
+  to the API's or Appium's 404); tools act as the synthetic SUPER_ADMIN.
+
+**Revoking** takes effect in one place, `GrantStore.revoke` (the grants
+routes, a replayed code or refresh token, the SDK's `/revoke`, a departed
+user):
+
+- `RevokedGrants.revoked(id)` before the write, so no check in flight can call
+  it live after. `RevokedGrants.isLive` sits under `verifyBearerCredential`,
+  `verifySessionTokenCredential` and per-command auth's cache: a grant found
+  live is trusted 30 s, a revoke on this server refuses it at once, another
+  server sharing the database sees it within 30 s. Live is GrantStore's own
+  rule (`grantIsLive`, `grantLifetime.ts`): a grant past its `expiresAt`, its
+  maximum life or its idle window is refused as a revoked one is, pruned or
+  not, so a day-long session token doesn't outlive its sign-in.
+- `LeaseService.endLeasesOfGrant(id, 'grant_revoked')` ends its leases with
+  the release protocol. A failure is logged and the revoke stands.
+- `revokeAllOf(userId)` revokes every unrevoked grant of the user, past its
+  limits or not (its last access token may still live). `departedUsers.ts`
+  (`watchDepartedUsers`, on `identityChanged`) calls it for a user made
+  Inactive or deleted, and ends their grantless agent leases
+  (`endAgentLeasesOf`, `user_not_active`).
+- `refuseGrantBound` (`src/middleware/refuseGrantBound.ts`) refuses a
+  grant-bound caller (`req.auth.grantId`) on every route that makes a
+  credential which would outlive the grant: `POST /auth/token`,
+  `/profile/tokens`, `/profile/access-key/rotate`, `/apikeys`, `/users`,
+  `/users/:id/reset-link`, `403 agent_sign_in_cannot_make_credentials`. A new
+  route that mints a key, token, password or reset link needs it. Single-use
+  tickets stay allowed.
+- Not ended: an Appium session the agent created (with per-command auth off
+  the session id authorizes its commands; on, its `gid` session token is
+  refused), and a recording it started, which keeps its hold until its owner
+  or an admin stops it.
+- The grants routes (`/oauth/grants`, after the login) take any credential of
+  the user, the agent's own token included, so an agent can revoke its user's
+  other agents. `DELETE /:id` of another user's grant needs an ADMIN or
+  SUPER_ADMIN holding the `admin` scope (`holdsAdminScope`), else it is the
+  unknown grant's `404`. The bulk `DELETE /?userId=` is `roleGuard`'s `403
+  requires role >= ADMIN` for a non-admin and `scopeGuard`'s `403
+  insufficient scope` for an admin without the scope. An admin's agent is
+  `roleGuard`'s `403` (it is judged a MEMBER). A credential with no user is `403`.
+
+**Dashboard.** "AI agents" (`/agents`, `web/src/components/agents/`) for
+every signed-in user: per agent what `website/docs/ai-agents.mdx` gives
+(`agentSetups` in `agentCommands.ts`: Claude Code, Codex and VS Code a
+command; Gemini CLI, Cursor and Windsurf the entry for their settings file;
+Claude Desktop a note, since its bridge comes with the installer; keep the
+two in step), a warning on a plain-HTTP hub that isn't loopback that some
+agents won't sign in over plain HTTP, and Connected agents with Sign out
+(confirmed in `ui/Modal`). The consent page
+(`web/src/components/oauth/ConsentPage.tsx`) is a top-level route in
+`AuthShell`, not the dashboard's shell, behind `RouteGuard`; it shows the
+redirect URI's host, since the agent picks its own name, and navigates only
+to the `redirectTo` the server answers. The installer
+(`@xenon-device-management/mcp`) lives in `xenon-studio` and isn't published
+yet, so nothing names it on screen.
+
 ### Identity & Manual Locks
 
-Authentication: every `/xenon/api` request is gated by `authMiddleware` (`src/middleware/authMiddleware.ts`), which accepts either the (`x-xenon-access-key`, `x-xenon-token`) header pair or the `xenon_dashboard_session` cookie — a `UserSession` id and nothing else. A cookie that isn't one falls through to the ticket paths, never to an API key. It also accepts a hub-issued RS256 JWT as `Authorization: Bearer` (audience `xenon-rest`, minted by `POST /auth/token`, validated against the hub's JWKS) — the same middleware, a third credential path with a live user lookup so REST revocation is instant. A dashboard socket takes the same changes as they are saved, and closes when REST stops taking its bearer token (see "A socket's identity follows its user"). The token's `scopes` claim is fixed at mint, so `verifyBearerCredential` drops `admin` from it once the user is a MEMBER (REST and per-command auth both read it). It always sets `req.auth = { kind, userId, role, scopes, teamIds, rateLimit, … }`; `req.apiKey = { id, scopes, teamId, rateLimit }` is additionally set on the API-key paths only, never for cookie user-sessions. Through 2.18 the cookie also took a raw API token, checked without its access key, unaffected by sign-out and renewed on every request, and `POST /auth/dashboard-session` put a SUPER_ADMIN's token there. That route is gone (an unknown route's `404`): making a sign-in session from a token instead would raise the token to its owner's role, and nothing called it. `scopeGuard(['devices'])` and `mutationScopeGuard(['devices'])` (mutations only — GETs always pass) enforce scope-based access on routers like `/control`.
+Authentication: every `/xenon/api` request is gated by `authMiddleware` (`src/middleware/authMiddleware.ts`), which accepts either the (`x-xenon-access-key`, `x-xenon-token`) header pair or the `xenon_dashboard_session` cookie — a `UserSession` id and nothing else. A cookie that isn't one falls through to the ticket paths, never to an API key. It also accepts a hub-issued RS256 JWT as `Authorization: Bearer` (audience `xenon-rest`, minted by `POST /auth/token`, validated against the hub's JWKS) — the same middleware, a third credential path with a live user lookup so REST revocation is instant. A dashboard socket takes the same changes as they are saved, and closes when REST stops taking its bearer token (see "A socket's identity follows its user"). The token's `scopes` claim is fixed at mint, so `verifyBearerCredential` drops `admin` from it once the user is a MEMBER (REST and per-command auth both read it). It always sets `req.auth = { kind, userId, role, scopes, teamIds, rateLimit, … }` (`role` is the user's; an admin decision reads `effectiveRole(req.auth)`, which is MEMBER for a grant-bound caller, `src/middleware/callerRole.ts`); `req.apiKey = { id, scopes, teamId, rateLimit }` is additionally set on the API-key paths only, never for cookie user-sessions. Through 2.18 the cookie also took a raw API token, checked without its access key, unaffected by sign-out and renewed on every request, and `POST /auth/dashboard-session` put a SUPER_ADMIN's token there. That route is gone (an unknown route's `404`): making a sign-in session from a token instead would raise the token to its owner's role, and nothing called it. `scopeGuard(['devices'])` and `mutationScopeGuard(['devices'])` (mutations only — GETs always pass) enforce scope-based access on routers like `/control`. Two more inputs: a request an MCP tool made in process carries its caller under `PRESET_CALLER` (`src/mcp/invokeApi.ts`, a symbol on the request object that no header, query or body can set), which `authMiddleware` takes as `req.auth` (and `req.apiKey` for a key pair) without reading a credential, and `csrfMiddleware` lets through, since no browser sent it; and a bearer token from an agent's browser sign-in carries the grant's id (`gid`), which `verifyBearerCredential` refuses once the grant is revoked (`RevokedGrants`; see "Xenon's MCP server"). Such a caller has `req.auth.grantId`.
 
 **The sign-in limit** (`loginRateLimiter.ts`, on `POST /auth/login` and
 `/auth/forgot-password`) counts attempts per caller address: Express's `req.ip`,
@@ -2408,7 +2632,13 @@ allows. That is the `trustProxy` option, else `XENON_TRUST_PROXY`, else unset
 before any route): Express's own values, `true`, a hop count or addresses,
 subnets and `loopback`/`linklocal`/`uniquelocal`. A value Express can't use is
 ignored with a warning. Unset, `req.ip` is the socket's address, so behind a
-reverse proxy every sign-in shares the proxy's count; set it there. A limiter keeps
+reverse proxy every sign-in shares the proxy's count; set it there. The agent
+sign-in routes (`/oauth/*`, `callerAddress`) count by the same `req.ip`, so
+without it the whole lab shares their limits too (10 sign-ins waiting, the
+authorize limiter's 100 per 15 minutes). `true` trusts the left-most
+`X-Forwarded-For`, which a caller that reaches the server directly writes
+itself, so it can sidestep every per-address limit: recommend a hop count or
+the proxy's addresses. A limiter keeps
 at most `MAX_LOGIN_BUCKETS` (10,000) addresses, dropping expired ones once a
 window and then the oldest. Through 2.36 the key was the first entry of the
 client's own `X-Forwarded-For`, so a new value with each attempt was never
@@ -2474,7 +2704,8 @@ interactive, so "watch the test I started" works.
   device — except `OWNERSHIP_CHECKED_READS` (currently just `clipboard`, which
   returns whatever the holder last copied). Keep that list short.
 - `evaluateDeviceAccess` (`src/services/device-access/deviceAccessPolicy.ts`) is
-  pure: admin → allow; **leased** (a live SDK lease, busy or not) → allow the
+  pure: admin (`resolveActor().isAdmin`: a SUPER_ADMIN or an `admin`-scoped
+  credential, never an agent's browser sign-in) → allow; **leased** (a live SDK lease, busy or not) → allow the
   lease holder (the key that created it, or any credential of the user behind
   it: `SessionOwnerResolver.leaseHolderOf`) and the owner of a session running
   on it, deny anyone else (`device_held_by_another_user`, with a message saying
@@ -2803,16 +3034,24 @@ checks credentials, and any later `<basePath>/session/:id/...` request is
 authorized by the session id alone. With it on, every request under
 `<basePath>/session/:sessionId` (all methods; `POST <basePath>/session` is not
 under it) must carry the credentials REST accepts, the `x-xenon-*` pair or a
-Bearer JWT (`xenon-rest`/`xenon-mcp`), verified by the helpers authMiddleware
-uses (`verifyCredential.ts`). The caller must be the session's owner
+Bearer JWT (`xenon-rest`/`xenon-mcp`), or a Basic one (below), verified by the
+helpers authMiddleware uses (`verifyCredential.ts`). An MCP tool's command
+(`invokeWebDriver`) presents none: its caller rides the request object under
+`PRESET_CALLER`, verified by `/xenon/mcp`, and gets the same owner check
+(`decideCallerAccess`). The caller must be the session's owner
 (`SessionOwnerResolver.ownerOf`) or an override admin by `canOverrideLease`'s
 rule; a Bearer token is judged by its `scopes` claim like a key, so an ADMIN's
 ordinary key can't mint an override. A refusal is WebDriver's unknown-session
 answer (404 `invalid session id`, empty `stacktrace`), so nobody can tell a
 session they may not use from a missing one. An ownerless session is refused
 to all but override admins. A failed lookup is `503 unknown error`, never an
-allow. Verified identities are cached 30 s by SHA-256 of the secret; revocation
-is not pushed, it takes up to 30 s (`commandCaller.ts` says why).
+allow. Verified identities are cached 30 s by SHA-256 of the secret. A revoked
+key or token, or a user made Inactive, stops working within those 30 s: that
+isn't pushed (`commandCaller.ts` says why). A token issued under an agent's
+browser sign-in (`gid`: its access token, or a session token from
+`xenon_session_capabilities`) is the exception: every cache hit asks
+`RevokedGrants.isLive` again, so a revoke on this server refuses it at once
+(another server sharing the database, within its own 30 s).
 
 - **Basic auth is the key pair from a hub URL** (`basicCredential.ts`).
   `http://ACCESS_KEY:TOKEN@host/wd/hub` reaches Xenon as `Authorization:
@@ -2826,6 +3065,15 @@ is not pushed, it takes up to 30 s (`commandCaller.ts` says why).
   read or doesn't verify throws `BasicCredentialRefused`, answered `401`
   with `WWW-Authenticate`: a client that put a key in its hub URL meant it
   to be used. The decoded values are never logged or echoed.
+- **Basic with the user `xenon-session` is a session token**
+  (`SESSION_TOKEN_BASIC_USER`), not a key pair: what
+  `xenon_session_capabilities` puts in the `remoteServerUrl` it gives an agent
+  when per-command auth is on, since `appium-mcp` sends no header after the
+  create, only the URL's user info. Per command it is checked as session
+  create checks a session token and judged as a Bearer token is (owner or
+  override). At create it stands for `xe:options.sessionToken` when the caps
+  carry none, and one that doesn't verify is `BasicCredentialRefused`
+  (`invalid-session-token`), `401`. No access key is spelled that way.
 - **It must run before Appium's routes.** Appium adds them before any plugin's
   `updateServer`, so a plain `app.use` never sees a command.
   `insertBeforeRoutes` splices the layer ahead of the first route, on
@@ -2941,6 +3189,13 @@ claims with TTL + heartbeat, swept by `LeaseOrphanSweeper` (every 30 s: a lease
 ends after three missed heartbeats or at `expiresAt`, whichever comes first;
 either way it is marked `expired` and its port leases deleted. Heartbeat,
 extend and `authorizeSessionUse` already refuse a lease past `expiresAt`).
+An agent's lease is heartbeat-free (`Lease.heartbeatFree`, set only for a
+request an MCP tool made, `mcpContextOf`): the sweeper never counts its
+heartbeats, it lasts `MCP_LEASE_DEFAULT_MS` (15 minutes) unless it asks
+otherwise, and it ends on release, at `expiresAt`, or when its sign-in grant
+is revoked. Any lease a grant-bound caller takes, through a tool or REST,
+records the grant (`Lease.grantId`); a body's `heartbeatFree` or `grantId` is
+never read (see "Xenon's MCP server").
 A lease has 1 to 8 phones (members; see "Group leases" below), and may wait
 for them in a queue.
 
@@ -2950,7 +3205,10 @@ Every terminal write also sets `endReason` (`LeaseEndReason`, `endedData`):
 `client_released` (a `DELETE`, waiting or active), `wait_ran_out`,
 `missed_heartbeats`, `past_end`, `unreadable_request` (a waiter whose stored
 request no pass can read, given up when its client next asks), or
-`member_lost: <member, why>` (`ended`). Through 2.36 only `ended` had one,
+`member_lost: <member, why>` (`ended`), `grant_revoked` (an agent's sign-in
+was revoked, `LeaseService.endLeasesOfGrant`: `released` if active, `expired`
+if waiting) or `user_not_active` (a grantless agent lease whose user became
+Inactive or was deleted, `endAgentLeasesOf`). Through 2.36 only `ended` had one,
 and `expired` alone meant any of four things. The API is unchanged: the
 statuses are the same, and only an `ended` group's `410` carries `reason`,
 in words without the code (`goneReason`).
@@ -3772,11 +4030,12 @@ manager reaps `Device` rows for unattached hardware (`removeStaleDevices`), so a
 seeded row is deleted before the page loads. Run it with `npm run test:viewport`
 against a running server (auth disabled).
 
-Coverage boundary — all 21 routes in the matrix are now **hermetic**. The 15
+Coverage boundary — all 22 routes in the matrix are now **hermetic**, and so
+is the consent page tested beside them. The 16
 data-heavy routes (overview, devices, devices?view=table, recordings,
 recordings/:groupId, builds, builds/:buildId, a failed and healed session's
-page, apps, selector-health, selector-health with its panel open, settings/teams,
-settings/users, settings/api-keys, settings/notifications)
+page, apps, selector-health, selector-health with its panel open, AI agents,
+settings/teams, settings/users, settings/api-keys, settings/notifications)
 route-mock their data endpoints via `ROUTE_DATA_MOCKS` with deliberately
 wide/hostile payloads — multiple rows plus a >100-char session subtitle, an
 >80-char selector XPath, a long bundle id, and long team/user names/emails — and
@@ -3798,7 +4057,8 @@ for them, and they have no entry in either map.
 
 One dependency still passes through to the live server unmocked: `AuthProvider`
 (mounted app-wide, so every route pays this on mount) calls `GET
-/xenon/api/auth/me`. It isn't hermetic in the literal sense, but it's stable —
+/xenon/api/auth/me`, except on AI agents and the consent page, which mock it
+as a signed-in user. It isn't hermetic in the literal sense, but it's stable —
 with auth disabled the server always returns the same synthetic
 `SUPER_ADMIN`/`auth-disabled` identity regardless of DB state — and no route
 gates its row rendering on `me`, so it doesn't threaten the vacuous-pass
@@ -3913,7 +4173,16 @@ in a fresh checkout or worktree it fails until a first `npm run build` (or
 | `src/gateway/nodeWebDriverUrl.ts` | A node's own base path from its public `GET /xenon/api/webdriver`, cached; the hub's is the fallback |
 | `src/services/recording/RecordingOrchestrator.ts` | Per-device + composite recording lifecycle |
 | `src/services/recording/manualLock.ts` | `manual_<actorId>_<udid>` lock format helpers |
-| `src/middleware/authMiddleware.ts` | Populates `req.auth` (and `req.apiKey` on API-key paths) from the header pair or session cookie; `scopesForRole` maps a cookie role to its scopes |
+| `src/middleware/authMiddleware.ts` | Populates `req.auth` (and `req.apiKey` on API-key paths) from the header pair or session cookie, or an MCP tool's preset caller; `scopesForRole` maps a cookie role to its scopes |
+| `src/mcp/mcpEndpoint.ts` | `/xenon/mcp`: stateless Streamable HTTP, header credentials only, foreign `Origin` refused, one McpServer per POST holding the caller's tools |
+| `src/mcp/invokeApi.ts` | Runs a `/xenon/api` route in process as a tool's caller (`PRESET_CALLER`), 30 s limit; `dispatchInProcess` shared with `invokeWebDriver.ts` (a session's WebDriver command through Appium's app, 5 min) |
+| `src/mcp/toolRegistry.ts` | Every MCP tool, in order; `toolsFor` keeps those the caller's MCP scopes allow |
+| `src/app/routers/oauth.ts` | Agent sign-in: discovery, register, authorize (to the consent page, never a redirect before consent), token, revoke, consent and grants routes |
+| `src/services/oauth/grantStore.ts` | `McpGrant` refresh chains: create, rotate (a reused token revokes), `revoke` (where every revoke takes effect: RevokedGrants, then the grant's leases), `revokeAllOf` |
+| `src/services/oauth/revokedGrants.ts` | Whether a token's `gid` grant stands: live trusted 30 s, a revoke here refused at once, fails closed |
+| `src/middleware/refuseGrantBound.ts` | `403 agent_sign_in_cannot_make_credentials` for a grant-bound caller on the six credential-minting routes |
+| `web/src/components/agents/AgentsPage.tsx` | AI agents page: per-agent commands with this hub's URL, Connected agents with Sign out |
+| `web/src/components/oauth/ConsentPage.tsx` | An agent's consent page: agent, hub, return address, scopes; Allow / Deny |
 | `src/middleware/deviceAccessGuard.ts` | Ownership guard on `/control` — method-scoped, with the mutation allowlist and `OWNERSHIP_CHECKED_READS` |
 | `src/middleware/deviceTeamGuard.ts` | Team guard on `/control` — every request; a hidden phone is handed on as `HIDDEN_DEVICE_UDID` so it answers exactly like an unknown udid |
 | `src/middleware/controlDevice.ts` | The one udid parser and per-request memoized device lookup both `/control` guards share; defines `HIDDEN_DEVICE_UDID` |

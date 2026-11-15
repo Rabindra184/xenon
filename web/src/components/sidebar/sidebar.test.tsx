@@ -108,12 +108,12 @@ describe('Sidebar', () => {
       ]),
     ).toEqual([
       ['nav-group-lab', ['Overview', 'Devices', 'Live devices', 'Apps']],
-      ['nav-group-testing', ['Sessions', 'Recordings', 'Selector health']],
+      ['nav-group-testing', ['Sessions', 'Recordings', 'Selector health', 'AI agents']],
       ['nav-group-admin', ['Settings']],
     ]);
   });
 
-  it('shows a MEMBER Lab and Testing, Recordings included', () => {
+  it('shows a MEMBER Lab and Testing, Recordings and AI agents included', () => {
     auth.me = { userId: 'b', role: 'MEMBER' };
     render(
       <MemoryRouter>
@@ -126,6 +126,7 @@ describe('Sidebar', () => {
       'nav-group-testing',
     ]);
     expect(screen.getByRole('button', { name: 'Recordings' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'AI agents' })).toBeInTheDocument();
   });
 });
 

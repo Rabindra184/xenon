@@ -15,6 +15,7 @@ const EXACT: Record<string, string> = {
   '/builds': 'Sessions',
   '/selector-health': 'Selector health',
   '/selector-health/detail': 'Selector health',
+  '/agents': 'AI agents',
   // Settings' sections: General is Settings itself, the rest by their tab.
   ...Object.fromEntries(
     SETTINGS_SECTIONS.map((s) => [s.path, s.id === 'general' ? 'Settings' : s.label]),
@@ -67,6 +68,7 @@ export function titleForPath(pathname: string, search = ''): string {
     else if ((m = path.match(/^\/runbooks\/([^/]+)/)))
       page = `Runbook · ${decodeURIComponent(m[1])}`;
     else if (path.startsWith('/reset-password/')) page = 'Reset password';
+    else if (/^\/oauth\/consent\/[^/]+$/i.test(path)) page = 'Allow an agent';
   }
   return page ? `${page} · ${APP}` : APP;
 }

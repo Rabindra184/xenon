@@ -171,6 +171,16 @@ export type EventLog = $Result.DefaultSelection<Prisma.$EventLogPayload>
  * 
  */
 export type Project = $Result.DefaultSelection<Prisma.$ProjectPayload>
+/**
+ * Model McpClient
+ * 
+ */
+export type McpClient = $Result.DefaultSelection<Prisma.$McpClientPayload>
+/**
+ * Model McpGrant
+ * 
+ */
+export type McpGrant = $Result.DefaultSelection<Prisma.$McpGrantPayload>
 
 /**
  * ##  Prisma Client ʲˢ
@@ -594,6 +604,26 @@ export class PrismaClient<
     * ```
     */
   get project(): Prisma.ProjectDelegate<ExtArgs>;
+
+  /**
+   * `prisma.mcpClient`: Exposes CRUD operations for the **McpClient** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more McpClients
+    * const mcpClients = await prisma.mcpClient.findMany()
+    * ```
+    */
+  get mcpClient(): Prisma.McpClientDelegate<ExtArgs>;
+
+  /**
+   * `prisma.mcpGrant`: Exposes CRUD operations for the **McpGrant** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more McpGrants
+    * const mcpGrants = await prisma.mcpGrant.findMany()
+    * ```
+    */
+  get mcpGrant(): Prisma.McpGrantDelegate<ExtArgs>;
 }
 
 export namespace Prisma {
@@ -1064,7 +1094,9 @@ export namespace Prisma {
     PasswordResetToken: 'PasswordResetToken',
     TeamMember: 'TeamMember',
     EventLog: 'EventLog',
-    Project: 'Project'
+    Project: 'Project',
+    McpClient: 'McpClient',
+    McpGrant: 'McpGrant'
   };
 
   export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -1080,7 +1112,7 @@ export namespace Prisma {
 
   export type TypeMap<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, ClientOptions = {}> = {
     meta: {
-      modelProps: "build" | "session" | "sessionLog" | "log" | "profiling" | "sessionMetric" | "app" | "device" | "deviceSetting" | "pendingSession" | "cLIArgs" | "webhookConfig" | "webConfig" | "locatorEtalon" | "portLease" | "lease" | "leaseMember" | "apiKey" | "team" | "selectorState" | "selectorEvent" | "recording" | "bookmark" | "annotation" | "user" | "userSession" | "passwordResetToken" | "teamMember" | "eventLog" | "project"
+      modelProps: "build" | "session" | "sessionLog" | "log" | "profiling" | "sessionMetric" | "app" | "device" | "deviceSetting" | "pendingSession" | "cLIArgs" | "webhookConfig" | "webConfig" | "locatorEtalon" | "portLease" | "lease" | "leaseMember" | "apiKey" | "team" | "selectorState" | "selectorEvent" | "recording" | "bookmark" | "annotation" | "user" | "userSession" | "passwordResetToken" | "teamMember" | "eventLog" | "project" | "mcpClient" | "mcpGrant"
       txIsolationLevel: Prisma.TransactionIsolationLevel
     }
     model: {
@@ -3181,6 +3213,146 @@ export namespace Prisma {
           count: {
             args: Prisma.ProjectCountArgs<ExtArgs>
             result: $Utils.Optional<ProjectCountAggregateOutputType> | number
+          }
+        }
+      }
+      McpClient: {
+        payload: Prisma.$McpClientPayload<ExtArgs>
+        fields: Prisma.McpClientFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.McpClientFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$McpClientPayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.McpClientFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$McpClientPayload>
+          }
+          findFirst: {
+            args: Prisma.McpClientFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$McpClientPayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.McpClientFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$McpClientPayload>
+          }
+          findMany: {
+            args: Prisma.McpClientFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$McpClientPayload>[]
+          }
+          create: {
+            args: Prisma.McpClientCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$McpClientPayload>
+          }
+          createMany: {
+            args: Prisma.McpClientCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.McpClientCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$McpClientPayload>[]
+          }
+          delete: {
+            args: Prisma.McpClientDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$McpClientPayload>
+          }
+          update: {
+            args: Prisma.McpClientUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$McpClientPayload>
+          }
+          deleteMany: {
+            args: Prisma.McpClientDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.McpClientUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          upsert: {
+            args: Prisma.McpClientUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$McpClientPayload>
+          }
+          aggregate: {
+            args: Prisma.McpClientAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateMcpClient>
+          }
+          groupBy: {
+            args: Prisma.McpClientGroupByArgs<ExtArgs>
+            result: $Utils.Optional<McpClientGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.McpClientCountArgs<ExtArgs>
+            result: $Utils.Optional<McpClientCountAggregateOutputType> | number
+          }
+        }
+      }
+      McpGrant: {
+        payload: Prisma.$McpGrantPayload<ExtArgs>
+        fields: Prisma.McpGrantFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.McpGrantFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$McpGrantPayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.McpGrantFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$McpGrantPayload>
+          }
+          findFirst: {
+            args: Prisma.McpGrantFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$McpGrantPayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.McpGrantFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$McpGrantPayload>
+          }
+          findMany: {
+            args: Prisma.McpGrantFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$McpGrantPayload>[]
+          }
+          create: {
+            args: Prisma.McpGrantCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$McpGrantPayload>
+          }
+          createMany: {
+            args: Prisma.McpGrantCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.McpGrantCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$McpGrantPayload>[]
+          }
+          delete: {
+            args: Prisma.McpGrantDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$McpGrantPayload>
+          }
+          update: {
+            args: Prisma.McpGrantUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$McpGrantPayload>
+          }
+          deleteMany: {
+            args: Prisma.McpGrantDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.McpGrantUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          upsert: {
+            args: Prisma.McpGrantUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$McpGrantPayload>
+          }
+          aggregate: {
+            args: Prisma.McpGrantAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateMcpGrant>
+          }
+          groupBy: {
+            args: Prisma.McpGrantGroupByArgs<ExtArgs>
+            result: $Utils.Optional<McpGrantGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.McpGrantCountArgs<ExtArgs>
+            result: $Utils.Optional<McpGrantCountAggregateOutputType> | number
           }
         }
       }
@@ -19575,6 +19747,8 @@ export namespace Prisma {
     durationMs: number | null
     callerTeamIds: string | null
     endReason: string | null
+    heartbeatFree: boolean | null
+    grantId: string | null
   }
 
   export type LeaseMaxAggregateOutputType = {
@@ -19598,6 +19772,8 @@ export namespace Prisma {
     durationMs: number | null
     callerTeamIds: string | null
     endReason: string | null
+    heartbeatFree: boolean | null
+    grantId: string | null
   }
 
   export type LeaseCountAggregateOutputType = {
@@ -19621,6 +19797,8 @@ export namespace Prisma {
     durationMs: number
     callerTeamIds: number
     endReason: number
+    heartbeatFree: number
+    grantId: number
     _all: number
   }
 
@@ -19662,6 +19840,8 @@ export namespace Prisma {
     durationMs?: true
     callerTeamIds?: true
     endReason?: true
+    heartbeatFree?: true
+    grantId?: true
   }
 
   export type LeaseMaxAggregateInputType = {
@@ -19685,6 +19865,8 @@ export namespace Prisma {
     durationMs?: true
     callerTeamIds?: true
     endReason?: true
+    heartbeatFree?: true
+    grantId?: true
   }
 
   export type LeaseCountAggregateInputType = {
@@ -19708,6 +19890,8 @@ export namespace Prisma {
     durationMs?: true
     callerTeamIds?: true
     endReason?: true
+    heartbeatFree?: true
+    grantId?: true
     _all?: true
   }
 
@@ -19818,6 +20002,8 @@ export namespace Prisma {
     durationMs: number | null
     callerTeamIds: string | null
     endReason: string | null
+    heartbeatFree: boolean | null
+    grantId: string | null
     _count: LeaseCountAggregateOutputType | null
     _avg: LeaseAvgAggregateOutputType | null
     _sum: LeaseSumAggregateOutputType | null
@@ -19860,6 +20046,8 @@ export namespace Prisma {
     durationMs?: boolean
     callerTeamIds?: boolean
     endReason?: boolean
+    heartbeatFree?: boolean
+    grantId?: boolean
     members?: boolean | Lease$membersArgs<ExtArgs>
     _count?: boolean | LeaseCountOutputTypeDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["lease"]>
@@ -19885,6 +20073,8 @@ export namespace Prisma {
     durationMs?: boolean
     callerTeamIds?: boolean
     endReason?: boolean
+    heartbeatFree?: boolean
+    grantId?: boolean
   }, ExtArgs["result"]["lease"]>
 
   export type LeaseSelectScalar = {
@@ -19908,6 +20098,8 @@ export namespace Prisma {
     durationMs?: boolean
     callerTeamIds?: boolean
     endReason?: boolean
+    heartbeatFree?: boolean
+    grantId?: boolean
   }
 
   export type LeaseInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
@@ -19942,6 +20134,8 @@ export namespace Prisma {
       durationMs: number | null
       callerTeamIds: string | null
       endReason: string | null
+      heartbeatFree: boolean | null
+      grantId: string | null
     }, ExtArgs["result"]["lease"]>
     composites: {}
   }
@@ -20356,6 +20550,8 @@ export namespace Prisma {
     readonly durationMs: FieldRef<"Lease", 'Float'>
     readonly callerTeamIds: FieldRef<"Lease", 'String'>
     readonly endReason: FieldRef<"Lease", 'String'>
+    readonly heartbeatFree: FieldRef<"Lease", 'Boolean'>
+    readonly grantId: FieldRef<"Lease", 'String'>
   }
     
 
@@ -34522,6 +34718,1818 @@ export namespace Prisma {
 
 
   /**
+   * Model McpClient
+   */
+
+  export type AggregateMcpClient = {
+    _count: McpClientCountAggregateOutputType | null
+    _min: McpClientMinAggregateOutputType | null
+    _max: McpClientMaxAggregateOutputType | null
+  }
+
+  export type McpClientMinAggregateOutputType = {
+    id: string | null
+    name: string | null
+    redirectUris: string | null
+    createdAt: Date | null
+    lastUsedAt: Date | null
+  }
+
+  export type McpClientMaxAggregateOutputType = {
+    id: string | null
+    name: string | null
+    redirectUris: string | null
+    createdAt: Date | null
+    lastUsedAt: Date | null
+  }
+
+  export type McpClientCountAggregateOutputType = {
+    id: number
+    name: number
+    redirectUris: number
+    createdAt: number
+    lastUsedAt: number
+    _all: number
+  }
+
+
+  export type McpClientMinAggregateInputType = {
+    id?: true
+    name?: true
+    redirectUris?: true
+    createdAt?: true
+    lastUsedAt?: true
+  }
+
+  export type McpClientMaxAggregateInputType = {
+    id?: true
+    name?: true
+    redirectUris?: true
+    createdAt?: true
+    lastUsedAt?: true
+  }
+
+  export type McpClientCountAggregateInputType = {
+    id?: true
+    name?: true
+    redirectUris?: true
+    createdAt?: true
+    lastUsedAt?: true
+    _all?: true
+  }
+
+  export type McpClientAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which McpClient to aggregate.
+     */
+    where?: McpClientWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of McpClients to fetch.
+     */
+    orderBy?: McpClientOrderByWithRelationInput | McpClientOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: McpClientWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` McpClients from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` McpClients.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned McpClients
+    **/
+    _count?: true | McpClientCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: McpClientMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: McpClientMaxAggregateInputType
+  }
+
+  export type GetMcpClientAggregateType<T extends McpClientAggregateArgs> = {
+        [P in keyof T & keyof AggregateMcpClient]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateMcpClient[P]>
+      : GetScalarType<T[P], AggregateMcpClient[P]>
+  }
+
+
+
+
+  export type McpClientGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: McpClientWhereInput
+    orderBy?: McpClientOrderByWithAggregationInput | McpClientOrderByWithAggregationInput[]
+    by: McpClientScalarFieldEnum[] | McpClientScalarFieldEnum
+    having?: McpClientScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: McpClientCountAggregateInputType | true
+    _min?: McpClientMinAggregateInputType
+    _max?: McpClientMaxAggregateInputType
+  }
+
+  export type McpClientGroupByOutputType = {
+    id: string
+    name: string
+    redirectUris: string
+    createdAt: Date
+    lastUsedAt: Date
+    _count: McpClientCountAggregateOutputType | null
+    _min: McpClientMinAggregateOutputType | null
+    _max: McpClientMaxAggregateOutputType | null
+  }
+
+  type GetMcpClientGroupByPayload<T extends McpClientGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<McpClientGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof McpClientGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], McpClientGroupByOutputType[P]>
+            : GetScalarType<T[P], McpClientGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type McpClientSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    name?: boolean
+    redirectUris?: boolean
+    createdAt?: boolean
+    lastUsedAt?: boolean
+  }, ExtArgs["result"]["mcpClient"]>
+
+  export type McpClientSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    name?: boolean
+    redirectUris?: boolean
+    createdAt?: boolean
+    lastUsedAt?: boolean
+  }, ExtArgs["result"]["mcpClient"]>
+
+  export type McpClientSelectScalar = {
+    id?: boolean
+    name?: boolean
+    redirectUris?: boolean
+    createdAt?: boolean
+    lastUsedAt?: boolean
+  }
+
+
+  export type $McpClientPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "McpClient"
+    objects: {}
+    scalars: $Extensions.GetPayloadResult<{
+      id: string
+      name: string
+      redirectUris: string
+      createdAt: Date
+      lastUsedAt: Date
+    }, ExtArgs["result"]["mcpClient"]>
+    composites: {}
+  }
+
+  type McpClientGetPayload<S extends boolean | null | undefined | McpClientDefaultArgs> = $Result.GetResult<Prisma.$McpClientPayload, S>
+
+  type McpClientCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = 
+    Omit<McpClientFindManyArgs, 'select' | 'include' | 'distinct'> & {
+      select?: McpClientCountAggregateInputType | true
+    }
+
+  export interface McpClientDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['McpClient'], meta: { name: 'McpClient' } }
+    /**
+     * Find zero or one McpClient that matches the filter.
+     * @param {McpClientFindUniqueArgs} args - Arguments to find a McpClient
+     * @example
+     * // Get one McpClient
+     * const mcpClient = await prisma.mcpClient.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends McpClientFindUniqueArgs>(args: SelectSubset<T, McpClientFindUniqueArgs<ExtArgs>>): Prisma__McpClientClient<$Result.GetResult<Prisma.$McpClientPayload<ExtArgs>, T, "findUnique"> | null, null, ExtArgs>
+
+    /**
+     * Find one McpClient that matches the filter or throw an error with `error.code='P2025'` 
+     * if no matches were found.
+     * @param {McpClientFindUniqueOrThrowArgs} args - Arguments to find a McpClient
+     * @example
+     * // Get one McpClient
+     * const mcpClient = await prisma.mcpClient.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends McpClientFindUniqueOrThrowArgs>(args: SelectSubset<T, McpClientFindUniqueOrThrowArgs<ExtArgs>>): Prisma__McpClientClient<$Result.GetResult<Prisma.$McpClientPayload<ExtArgs>, T, "findUniqueOrThrow">, never, ExtArgs>
+
+    /**
+     * Find the first McpClient that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {McpClientFindFirstArgs} args - Arguments to find a McpClient
+     * @example
+     * // Get one McpClient
+     * const mcpClient = await prisma.mcpClient.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends McpClientFindFirstArgs>(args?: SelectSubset<T, McpClientFindFirstArgs<ExtArgs>>): Prisma__McpClientClient<$Result.GetResult<Prisma.$McpClientPayload<ExtArgs>, T, "findFirst"> | null, null, ExtArgs>
+
+    /**
+     * Find the first McpClient that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {McpClientFindFirstOrThrowArgs} args - Arguments to find a McpClient
+     * @example
+     * // Get one McpClient
+     * const mcpClient = await prisma.mcpClient.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends McpClientFindFirstOrThrowArgs>(args?: SelectSubset<T, McpClientFindFirstOrThrowArgs<ExtArgs>>): Prisma__McpClientClient<$Result.GetResult<Prisma.$McpClientPayload<ExtArgs>, T, "findFirstOrThrow">, never, ExtArgs>
+
+    /**
+     * Find zero or more McpClients that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {McpClientFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all McpClients
+     * const mcpClients = await prisma.mcpClient.findMany()
+     * 
+     * // Get first 10 McpClients
+     * const mcpClients = await prisma.mcpClient.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const mcpClientWithIdOnly = await prisma.mcpClient.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends McpClientFindManyArgs>(args?: SelectSubset<T, McpClientFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$McpClientPayload<ExtArgs>, T, "findMany">>
+
+    /**
+     * Create a McpClient.
+     * @param {McpClientCreateArgs} args - Arguments to create a McpClient.
+     * @example
+     * // Create one McpClient
+     * const McpClient = await prisma.mcpClient.create({
+     *   data: {
+     *     // ... data to create a McpClient
+     *   }
+     * })
+     * 
+     */
+    create<T extends McpClientCreateArgs>(args: SelectSubset<T, McpClientCreateArgs<ExtArgs>>): Prisma__McpClientClient<$Result.GetResult<Prisma.$McpClientPayload<ExtArgs>, T, "create">, never, ExtArgs>
+
+    /**
+     * Create many McpClients.
+     * @param {McpClientCreateManyArgs} args - Arguments to create many McpClients.
+     * @example
+     * // Create many McpClients
+     * const mcpClient = await prisma.mcpClient.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends McpClientCreateManyArgs>(args?: SelectSubset<T, McpClientCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many McpClients and returns the data saved in the database.
+     * @param {McpClientCreateManyAndReturnArgs} args - Arguments to create many McpClients.
+     * @example
+     * // Create many McpClients
+     * const mcpClient = await prisma.mcpClient.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many McpClients and only return the `id`
+     * const mcpClientWithIdOnly = await prisma.mcpClient.createManyAndReturn({ 
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends McpClientCreateManyAndReturnArgs>(args?: SelectSubset<T, McpClientCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$McpClientPayload<ExtArgs>, T, "createManyAndReturn">>
+
+    /**
+     * Delete a McpClient.
+     * @param {McpClientDeleteArgs} args - Arguments to delete one McpClient.
+     * @example
+     * // Delete one McpClient
+     * const McpClient = await prisma.mcpClient.delete({
+     *   where: {
+     *     // ... filter to delete one McpClient
+     *   }
+     * })
+     * 
+     */
+    delete<T extends McpClientDeleteArgs>(args: SelectSubset<T, McpClientDeleteArgs<ExtArgs>>): Prisma__McpClientClient<$Result.GetResult<Prisma.$McpClientPayload<ExtArgs>, T, "delete">, never, ExtArgs>
+
+    /**
+     * Update one McpClient.
+     * @param {McpClientUpdateArgs} args - Arguments to update one McpClient.
+     * @example
+     * // Update one McpClient
+     * const mcpClient = await prisma.mcpClient.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends McpClientUpdateArgs>(args: SelectSubset<T, McpClientUpdateArgs<ExtArgs>>): Prisma__McpClientClient<$Result.GetResult<Prisma.$McpClientPayload<ExtArgs>, T, "update">, never, ExtArgs>
+
+    /**
+     * Delete zero or more McpClients.
+     * @param {McpClientDeleteManyArgs} args - Arguments to filter McpClients to delete.
+     * @example
+     * // Delete a few McpClients
+     * const { count } = await prisma.mcpClient.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends McpClientDeleteManyArgs>(args?: SelectSubset<T, McpClientDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more McpClients.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {McpClientUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many McpClients
+     * const mcpClient = await prisma.mcpClient.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends McpClientUpdateManyArgs>(args: SelectSubset<T, McpClientUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create or update one McpClient.
+     * @param {McpClientUpsertArgs} args - Arguments to update or create a McpClient.
+     * @example
+     * // Update or create a McpClient
+     * const mcpClient = await prisma.mcpClient.upsert({
+     *   create: {
+     *     // ... data to create a McpClient
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the McpClient we want to update
+     *   }
+     * })
+     */
+    upsert<T extends McpClientUpsertArgs>(args: SelectSubset<T, McpClientUpsertArgs<ExtArgs>>): Prisma__McpClientClient<$Result.GetResult<Prisma.$McpClientPayload<ExtArgs>, T, "upsert">, never, ExtArgs>
+
+
+    /**
+     * Count the number of McpClients.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {McpClientCountArgs} args - Arguments to filter McpClients to count.
+     * @example
+     * // Count the number of McpClients
+     * const count = await prisma.mcpClient.count({
+     *   where: {
+     *     // ... the filter for the McpClients we want to count
+     *   }
+     * })
+    **/
+    count<T extends McpClientCountArgs>(
+      args?: Subset<T, McpClientCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], McpClientCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a McpClient.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {McpClientAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends McpClientAggregateArgs>(args: Subset<T, McpClientAggregateArgs>): Prisma.PrismaPromise<GetMcpClientAggregateType<T>>
+
+    /**
+     * Group by McpClient.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {McpClientGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends McpClientGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: McpClientGroupByArgs['orderBy'] }
+        : { orderBy?: McpClientGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, McpClientGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetMcpClientGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the McpClient model
+   */
+  readonly fields: McpClientFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for McpClient.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__McpClientClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the McpClient model
+   */ 
+  interface McpClientFieldRefs {
+    readonly id: FieldRef<"McpClient", 'String'>
+    readonly name: FieldRef<"McpClient", 'String'>
+    readonly redirectUris: FieldRef<"McpClient", 'String'>
+    readonly createdAt: FieldRef<"McpClient", 'DateTime'>
+    readonly lastUsedAt: FieldRef<"McpClient", 'DateTime'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * McpClient findUnique
+   */
+  export type McpClientFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpClient
+     */
+    select?: McpClientSelect<ExtArgs> | null
+    /**
+     * Filter, which McpClient to fetch.
+     */
+    where: McpClientWhereUniqueInput
+  }
+
+  /**
+   * McpClient findUniqueOrThrow
+   */
+  export type McpClientFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpClient
+     */
+    select?: McpClientSelect<ExtArgs> | null
+    /**
+     * Filter, which McpClient to fetch.
+     */
+    where: McpClientWhereUniqueInput
+  }
+
+  /**
+   * McpClient findFirst
+   */
+  export type McpClientFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpClient
+     */
+    select?: McpClientSelect<ExtArgs> | null
+    /**
+     * Filter, which McpClient to fetch.
+     */
+    where?: McpClientWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of McpClients to fetch.
+     */
+    orderBy?: McpClientOrderByWithRelationInput | McpClientOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for McpClients.
+     */
+    cursor?: McpClientWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` McpClients from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` McpClients.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of McpClients.
+     */
+    distinct?: McpClientScalarFieldEnum | McpClientScalarFieldEnum[]
+  }
+
+  /**
+   * McpClient findFirstOrThrow
+   */
+  export type McpClientFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpClient
+     */
+    select?: McpClientSelect<ExtArgs> | null
+    /**
+     * Filter, which McpClient to fetch.
+     */
+    where?: McpClientWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of McpClients to fetch.
+     */
+    orderBy?: McpClientOrderByWithRelationInput | McpClientOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for McpClients.
+     */
+    cursor?: McpClientWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` McpClients from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` McpClients.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of McpClients.
+     */
+    distinct?: McpClientScalarFieldEnum | McpClientScalarFieldEnum[]
+  }
+
+  /**
+   * McpClient findMany
+   */
+  export type McpClientFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpClient
+     */
+    select?: McpClientSelect<ExtArgs> | null
+    /**
+     * Filter, which McpClients to fetch.
+     */
+    where?: McpClientWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of McpClients to fetch.
+     */
+    orderBy?: McpClientOrderByWithRelationInput | McpClientOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing McpClients.
+     */
+    cursor?: McpClientWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` McpClients from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` McpClients.
+     */
+    skip?: number
+    distinct?: McpClientScalarFieldEnum | McpClientScalarFieldEnum[]
+  }
+
+  /**
+   * McpClient create
+   */
+  export type McpClientCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpClient
+     */
+    select?: McpClientSelect<ExtArgs> | null
+    /**
+     * The data needed to create a McpClient.
+     */
+    data: XOR<McpClientCreateInput, McpClientUncheckedCreateInput>
+  }
+
+  /**
+   * McpClient createMany
+   */
+  export type McpClientCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many McpClients.
+     */
+    data: McpClientCreateManyInput | McpClientCreateManyInput[]
+  }
+
+  /**
+   * McpClient createManyAndReturn
+   */
+  export type McpClientCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpClient
+     */
+    select?: McpClientSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * The data used to create many McpClients.
+     */
+    data: McpClientCreateManyInput | McpClientCreateManyInput[]
+  }
+
+  /**
+   * McpClient update
+   */
+  export type McpClientUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpClient
+     */
+    select?: McpClientSelect<ExtArgs> | null
+    /**
+     * The data needed to update a McpClient.
+     */
+    data: XOR<McpClientUpdateInput, McpClientUncheckedUpdateInput>
+    /**
+     * Choose, which McpClient to update.
+     */
+    where: McpClientWhereUniqueInput
+  }
+
+  /**
+   * McpClient updateMany
+   */
+  export type McpClientUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update McpClients.
+     */
+    data: XOR<McpClientUpdateManyMutationInput, McpClientUncheckedUpdateManyInput>
+    /**
+     * Filter which McpClients to update
+     */
+    where?: McpClientWhereInput
+  }
+
+  /**
+   * McpClient upsert
+   */
+  export type McpClientUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpClient
+     */
+    select?: McpClientSelect<ExtArgs> | null
+    /**
+     * The filter to search for the McpClient to update in case it exists.
+     */
+    where: McpClientWhereUniqueInput
+    /**
+     * In case the McpClient found by the `where` argument doesn't exist, create a new McpClient with this data.
+     */
+    create: XOR<McpClientCreateInput, McpClientUncheckedCreateInput>
+    /**
+     * In case the McpClient was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<McpClientUpdateInput, McpClientUncheckedUpdateInput>
+  }
+
+  /**
+   * McpClient delete
+   */
+  export type McpClientDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpClient
+     */
+    select?: McpClientSelect<ExtArgs> | null
+    /**
+     * Filter which McpClient to delete.
+     */
+    where: McpClientWhereUniqueInput
+  }
+
+  /**
+   * McpClient deleteMany
+   */
+  export type McpClientDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which McpClients to delete
+     */
+    where?: McpClientWhereInput
+  }
+
+  /**
+   * McpClient without action
+   */
+  export type McpClientDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpClient
+     */
+    select?: McpClientSelect<ExtArgs> | null
+  }
+
+
+  /**
+   * Model McpGrant
+   */
+
+  export type AggregateMcpGrant = {
+    _count: McpGrantCountAggregateOutputType | null
+    _min: McpGrantMinAggregateOutputType | null
+    _max: McpGrantMaxAggregateOutputType | null
+  }
+
+  export type McpGrantMinAggregateOutputType = {
+    id: string | null
+    userId: string | null
+    clientId: string | null
+    scopes: string | null
+    tokenHash: string | null
+    createdAt: Date | null
+    lastUsedAt: Date | null
+    expiresAt: Date | null
+    revokedAt: Date | null
+    rotatedFromId: string | null
+  }
+
+  export type McpGrantMaxAggregateOutputType = {
+    id: string | null
+    userId: string | null
+    clientId: string | null
+    scopes: string | null
+    tokenHash: string | null
+    createdAt: Date | null
+    lastUsedAt: Date | null
+    expiresAt: Date | null
+    revokedAt: Date | null
+    rotatedFromId: string | null
+  }
+
+  export type McpGrantCountAggregateOutputType = {
+    id: number
+    userId: number
+    clientId: number
+    scopes: number
+    tokenHash: number
+    createdAt: number
+    lastUsedAt: number
+    expiresAt: number
+    revokedAt: number
+    rotatedFromId: number
+    _all: number
+  }
+
+
+  export type McpGrantMinAggregateInputType = {
+    id?: true
+    userId?: true
+    clientId?: true
+    scopes?: true
+    tokenHash?: true
+    createdAt?: true
+    lastUsedAt?: true
+    expiresAt?: true
+    revokedAt?: true
+    rotatedFromId?: true
+  }
+
+  export type McpGrantMaxAggregateInputType = {
+    id?: true
+    userId?: true
+    clientId?: true
+    scopes?: true
+    tokenHash?: true
+    createdAt?: true
+    lastUsedAt?: true
+    expiresAt?: true
+    revokedAt?: true
+    rotatedFromId?: true
+  }
+
+  export type McpGrantCountAggregateInputType = {
+    id?: true
+    userId?: true
+    clientId?: true
+    scopes?: true
+    tokenHash?: true
+    createdAt?: true
+    lastUsedAt?: true
+    expiresAt?: true
+    revokedAt?: true
+    rotatedFromId?: true
+    _all?: true
+  }
+
+  export type McpGrantAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which McpGrant to aggregate.
+     */
+    where?: McpGrantWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of McpGrants to fetch.
+     */
+    orderBy?: McpGrantOrderByWithRelationInput | McpGrantOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: McpGrantWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` McpGrants from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` McpGrants.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned McpGrants
+    **/
+    _count?: true | McpGrantCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: McpGrantMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: McpGrantMaxAggregateInputType
+  }
+
+  export type GetMcpGrantAggregateType<T extends McpGrantAggregateArgs> = {
+        [P in keyof T & keyof AggregateMcpGrant]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateMcpGrant[P]>
+      : GetScalarType<T[P], AggregateMcpGrant[P]>
+  }
+
+
+
+
+  export type McpGrantGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: McpGrantWhereInput
+    orderBy?: McpGrantOrderByWithAggregationInput | McpGrantOrderByWithAggregationInput[]
+    by: McpGrantScalarFieldEnum[] | McpGrantScalarFieldEnum
+    having?: McpGrantScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: McpGrantCountAggregateInputType | true
+    _min?: McpGrantMinAggregateInputType
+    _max?: McpGrantMaxAggregateInputType
+  }
+
+  export type McpGrantGroupByOutputType = {
+    id: string
+    userId: string
+    clientId: string
+    scopes: string
+    tokenHash: string
+    createdAt: Date
+    lastUsedAt: Date
+    expiresAt: Date
+    revokedAt: Date | null
+    rotatedFromId: string | null
+    _count: McpGrantCountAggregateOutputType | null
+    _min: McpGrantMinAggregateOutputType | null
+    _max: McpGrantMaxAggregateOutputType | null
+  }
+
+  type GetMcpGrantGroupByPayload<T extends McpGrantGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<McpGrantGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof McpGrantGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], McpGrantGroupByOutputType[P]>
+            : GetScalarType<T[P], McpGrantGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type McpGrantSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    userId?: boolean
+    clientId?: boolean
+    scopes?: boolean
+    tokenHash?: boolean
+    createdAt?: boolean
+    lastUsedAt?: boolean
+    expiresAt?: boolean
+    revokedAt?: boolean
+    rotatedFromId?: boolean
+  }, ExtArgs["result"]["mcpGrant"]>
+
+  export type McpGrantSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    userId?: boolean
+    clientId?: boolean
+    scopes?: boolean
+    tokenHash?: boolean
+    createdAt?: boolean
+    lastUsedAt?: boolean
+    expiresAt?: boolean
+    revokedAt?: boolean
+    rotatedFromId?: boolean
+  }, ExtArgs["result"]["mcpGrant"]>
+
+  export type McpGrantSelectScalar = {
+    id?: boolean
+    userId?: boolean
+    clientId?: boolean
+    scopes?: boolean
+    tokenHash?: boolean
+    createdAt?: boolean
+    lastUsedAt?: boolean
+    expiresAt?: boolean
+    revokedAt?: boolean
+    rotatedFromId?: boolean
+  }
+
+
+  export type $McpGrantPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "McpGrant"
+    objects: {}
+    scalars: $Extensions.GetPayloadResult<{
+      id: string
+      userId: string
+      clientId: string
+      scopes: string
+      tokenHash: string
+      createdAt: Date
+      lastUsedAt: Date
+      expiresAt: Date
+      revokedAt: Date | null
+      rotatedFromId: string | null
+    }, ExtArgs["result"]["mcpGrant"]>
+    composites: {}
+  }
+
+  type McpGrantGetPayload<S extends boolean | null | undefined | McpGrantDefaultArgs> = $Result.GetResult<Prisma.$McpGrantPayload, S>
+
+  type McpGrantCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = 
+    Omit<McpGrantFindManyArgs, 'select' | 'include' | 'distinct'> & {
+      select?: McpGrantCountAggregateInputType | true
+    }
+
+  export interface McpGrantDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['McpGrant'], meta: { name: 'McpGrant' } }
+    /**
+     * Find zero or one McpGrant that matches the filter.
+     * @param {McpGrantFindUniqueArgs} args - Arguments to find a McpGrant
+     * @example
+     * // Get one McpGrant
+     * const mcpGrant = await prisma.mcpGrant.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends McpGrantFindUniqueArgs>(args: SelectSubset<T, McpGrantFindUniqueArgs<ExtArgs>>): Prisma__McpGrantClient<$Result.GetResult<Prisma.$McpGrantPayload<ExtArgs>, T, "findUnique"> | null, null, ExtArgs>
+
+    /**
+     * Find one McpGrant that matches the filter or throw an error with `error.code='P2025'` 
+     * if no matches were found.
+     * @param {McpGrantFindUniqueOrThrowArgs} args - Arguments to find a McpGrant
+     * @example
+     * // Get one McpGrant
+     * const mcpGrant = await prisma.mcpGrant.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends McpGrantFindUniqueOrThrowArgs>(args: SelectSubset<T, McpGrantFindUniqueOrThrowArgs<ExtArgs>>): Prisma__McpGrantClient<$Result.GetResult<Prisma.$McpGrantPayload<ExtArgs>, T, "findUniqueOrThrow">, never, ExtArgs>
+
+    /**
+     * Find the first McpGrant that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {McpGrantFindFirstArgs} args - Arguments to find a McpGrant
+     * @example
+     * // Get one McpGrant
+     * const mcpGrant = await prisma.mcpGrant.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends McpGrantFindFirstArgs>(args?: SelectSubset<T, McpGrantFindFirstArgs<ExtArgs>>): Prisma__McpGrantClient<$Result.GetResult<Prisma.$McpGrantPayload<ExtArgs>, T, "findFirst"> | null, null, ExtArgs>
+
+    /**
+     * Find the first McpGrant that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {McpGrantFindFirstOrThrowArgs} args - Arguments to find a McpGrant
+     * @example
+     * // Get one McpGrant
+     * const mcpGrant = await prisma.mcpGrant.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends McpGrantFindFirstOrThrowArgs>(args?: SelectSubset<T, McpGrantFindFirstOrThrowArgs<ExtArgs>>): Prisma__McpGrantClient<$Result.GetResult<Prisma.$McpGrantPayload<ExtArgs>, T, "findFirstOrThrow">, never, ExtArgs>
+
+    /**
+     * Find zero or more McpGrants that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {McpGrantFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all McpGrants
+     * const mcpGrants = await prisma.mcpGrant.findMany()
+     * 
+     * // Get first 10 McpGrants
+     * const mcpGrants = await prisma.mcpGrant.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const mcpGrantWithIdOnly = await prisma.mcpGrant.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends McpGrantFindManyArgs>(args?: SelectSubset<T, McpGrantFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$McpGrantPayload<ExtArgs>, T, "findMany">>
+
+    /**
+     * Create a McpGrant.
+     * @param {McpGrantCreateArgs} args - Arguments to create a McpGrant.
+     * @example
+     * // Create one McpGrant
+     * const McpGrant = await prisma.mcpGrant.create({
+     *   data: {
+     *     // ... data to create a McpGrant
+     *   }
+     * })
+     * 
+     */
+    create<T extends McpGrantCreateArgs>(args: SelectSubset<T, McpGrantCreateArgs<ExtArgs>>): Prisma__McpGrantClient<$Result.GetResult<Prisma.$McpGrantPayload<ExtArgs>, T, "create">, never, ExtArgs>
+
+    /**
+     * Create many McpGrants.
+     * @param {McpGrantCreateManyArgs} args - Arguments to create many McpGrants.
+     * @example
+     * // Create many McpGrants
+     * const mcpGrant = await prisma.mcpGrant.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends McpGrantCreateManyArgs>(args?: SelectSubset<T, McpGrantCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many McpGrants and returns the data saved in the database.
+     * @param {McpGrantCreateManyAndReturnArgs} args - Arguments to create many McpGrants.
+     * @example
+     * // Create many McpGrants
+     * const mcpGrant = await prisma.mcpGrant.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many McpGrants and only return the `id`
+     * const mcpGrantWithIdOnly = await prisma.mcpGrant.createManyAndReturn({ 
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends McpGrantCreateManyAndReturnArgs>(args?: SelectSubset<T, McpGrantCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$McpGrantPayload<ExtArgs>, T, "createManyAndReturn">>
+
+    /**
+     * Delete a McpGrant.
+     * @param {McpGrantDeleteArgs} args - Arguments to delete one McpGrant.
+     * @example
+     * // Delete one McpGrant
+     * const McpGrant = await prisma.mcpGrant.delete({
+     *   where: {
+     *     // ... filter to delete one McpGrant
+     *   }
+     * })
+     * 
+     */
+    delete<T extends McpGrantDeleteArgs>(args: SelectSubset<T, McpGrantDeleteArgs<ExtArgs>>): Prisma__McpGrantClient<$Result.GetResult<Prisma.$McpGrantPayload<ExtArgs>, T, "delete">, never, ExtArgs>
+
+    /**
+     * Update one McpGrant.
+     * @param {McpGrantUpdateArgs} args - Arguments to update one McpGrant.
+     * @example
+     * // Update one McpGrant
+     * const mcpGrant = await prisma.mcpGrant.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends McpGrantUpdateArgs>(args: SelectSubset<T, McpGrantUpdateArgs<ExtArgs>>): Prisma__McpGrantClient<$Result.GetResult<Prisma.$McpGrantPayload<ExtArgs>, T, "update">, never, ExtArgs>
+
+    /**
+     * Delete zero or more McpGrants.
+     * @param {McpGrantDeleteManyArgs} args - Arguments to filter McpGrants to delete.
+     * @example
+     * // Delete a few McpGrants
+     * const { count } = await prisma.mcpGrant.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends McpGrantDeleteManyArgs>(args?: SelectSubset<T, McpGrantDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more McpGrants.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {McpGrantUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many McpGrants
+     * const mcpGrant = await prisma.mcpGrant.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends McpGrantUpdateManyArgs>(args: SelectSubset<T, McpGrantUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create or update one McpGrant.
+     * @param {McpGrantUpsertArgs} args - Arguments to update or create a McpGrant.
+     * @example
+     * // Update or create a McpGrant
+     * const mcpGrant = await prisma.mcpGrant.upsert({
+     *   create: {
+     *     // ... data to create a McpGrant
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the McpGrant we want to update
+     *   }
+     * })
+     */
+    upsert<T extends McpGrantUpsertArgs>(args: SelectSubset<T, McpGrantUpsertArgs<ExtArgs>>): Prisma__McpGrantClient<$Result.GetResult<Prisma.$McpGrantPayload<ExtArgs>, T, "upsert">, never, ExtArgs>
+
+
+    /**
+     * Count the number of McpGrants.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {McpGrantCountArgs} args - Arguments to filter McpGrants to count.
+     * @example
+     * // Count the number of McpGrants
+     * const count = await prisma.mcpGrant.count({
+     *   where: {
+     *     // ... the filter for the McpGrants we want to count
+     *   }
+     * })
+    **/
+    count<T extends McpGrantCountArgs>(
+      args?: Subset<T, McpGrantCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], McpGrantCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a McpGrant.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {McpGrantAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends McpGrantAggregateArgs>(args: Subset<T, McpGrantAggregateArgs>): Prisma.PrismaPromise<GetMcpGrantAggregateType<T>>
+
+    /**
+     * Group by McpGrant.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {McpGrantGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends McpGrantGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: McpGrantGroupByArgs['orderBy'] }
+        : { orderBy?: McpGrantGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, McpGrantGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetMcpGrantGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the McpGrant model
+   */
+  readonly fields: McpGrantFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for McpGrant.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__McpGrantClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the McpGrant model
+   */ 
+  interface McpGrantFieldRefs {
+    readonly id: FieldRef<"McpGrant", 'String'>
+    readonly userId: FieldRef<"McpGrant", 'String'>
+    readonly clientId: FieldRef<"McpGrant", 'String'>
+    readonly scopes: FieldRef<"McpGrant", 'String'>
+    readonly tokenHash: FieldRef<"McpGrant", 'String'>
+    readonly createdAt: FieldRef<"McpGrant", 'DateTime'>
+    readonly lastUsedAt: FieldRef<"McpGrant", 'DateTime'>
+    readonly expiresAt: FieldRef<"McpGrant", 'DateTime'>
+    readonly revokedAt: FieldRef<"McpGrant", 'DateTime'>
+    readonly rotatedFromId: FieldRef<"McpGrant", 'String'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * McpGrant findUnique
+   */
+  export type McpGrantFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpGrant
+     */
+    select?: McpGrantSelect<ExtArgs> | null
+    /**
+     * Filter, which McpGrant to fetch.
+     */
+    where: McpGrantWhereUniqueInput
+  }
+
+  /**
+   * McpGrant findUniqueOrThrow
+   */
+  export type McpGrantFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpGrant
+     */
+    select?: McpGrantSelect<ExtArgs> | null
+    /**
+     * Filter, which McpGrant to fetch.
+     */
+    where: McpGrantWhereUniqueInput
+  }
+
+  /**
+   * McpGrant findFirst
+   */
+  export type McpGrantFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpGrant
+     */
+    select?: McpGrantSelect<ExtArgs> | null
+    /**
+     * Filter, which McpGrant to fetch.
+     */
+    where?: McpGrantWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of McpGrants to fetch.
+     */
+    orderBy?: McpGrantOrderByWithRelationInput | McpGrantOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for McpGrants.
+     */
+    cursor?: McpGrantWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` McpGrants from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` McpGrants.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of McpGrants.
+     */
+    distinct?: McpGrantScalarFieldEnum | McpGrantScalarFieldEnum[]
+  }
+
+  /**
+   * McpGrant findFirstOrThrow
+   */
+  export type McpGrantFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpGrant
+     */
+    select?: McpGrantSelect<ExtArgs> | null
+    /**
+     * Filter, which McpGrant to fetch.
+     */
+    where?: McpGrantWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of McpGrants to fetch.
+     */
+    orderBy?: McpGrantOrderByWithRelationInput | McpGrantOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for McpGrants.
+     */
+    cursor?: McpGrantWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` McpGrants from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` McpGrants.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of McpGrants.
+     */
+    distinct?: McpGrantScalarFieldEnum | McpGrantScalarFieldEnum[]
+  }
+
+  /**
+   * McpGrant findMany
+   */
+  export type McpGrantFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpGrant
+     */
+    select?: McpGrantSelect<ExtArgs> | null
+    /**
+     * Filter, which McpGrants to fetch.
+     */
+    where?: McpGrantWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of McpGrants to fetch.
+     */
+    orderBy?: McpGrantOrderByWithRelationInput | McpGrantOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing McpGrants.
+     */
+    cursor?: McpGrantWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` McpGrants from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` McpGrants.
+     */
+    skip?: number
+    distinct?: McpGrantScalarFieldEnum | McpGrantScalarFieldEnum[]
+  }
+
+  /**
+   * McpGrant create
+   */
+  export type McpGrantCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpGrant
+     */
+    select?: McpGrantSelect<ExtArgs> | null
+    /**
+     * The data needed to create a McpGrant.
+     */
+    data: XOR<McpGrantCreateInput, McpGrantUncheckedCreateInput>
+  }
+
+  /**
+   * McpGrant createMany
+   */
+  export type McpGrantCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many McpGrants.
+     */
+    data: McpGrantCreateManyInput | McpGrantCreateManyInput[]
+  }
+
+  /**
+   * McpGrant createManyAndReturn
+   */
+  export type McpGrantCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpGrant
+     */
+    select?: McpGrantSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * The data used to create many McpGrants.
+     */
+    data: McpGrantCreateManyInput | McpGrantCreateManyInput[]
+  }
+
+  /**
+   * McpGrant update
+   */
+  export type McpGrantUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpGrant
+     */
+    select?: McpGrantSelect<ExtArgs> | null
+    /**
+     * The data needed to update a McpGrant.
+     */
+    data: XOR<McpGrantUpdateInput, McpGrantUncheckedUpdateInput>
+    /**
+     * Choose, which McpGrant to update.
+     */
+    where: McpGrantWhereUniqueInput
+  }
+
+  /**
+   * McpGrant updateMany
+   */
+  export type McpGrantUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update McpGrants.
+     */
+    data: XOR<McpGrantUpdateManyMutationInput, McpGrantUncheckedUpdateManyInput>
+    /**
+     * Filter which McpGrants to update
+     */
+    where?: McpGrantWhereInput
+  }
+
+  /**
+   * McpGrant upsert
+   */
+  export type McpGrantUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpGrant
+     */
+    select?: McpGrantSelect<ExtArgs> | null
+    /**
+     * The filter to search for the McpGrant to update in case it exists.
+     */
+    where: McpGrantWhereUniqueInput
+    /**
+     * In case the McpGrant found by the `where` argument doesn't exist, create a new McpGrant with this data.
+     */
+    create: XOR<McpGrantCreateInput, McpGrantUncheckedCreateInput>
+    /**
+     * In case the McpGrant was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<McpGrantUpdateInput, McpGrantUncheckedUpdateInput>
+  }
+
+  /**
+   * McpGrant delete
+   */
+  export type McpGrantDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpGrant
+     */
+    select?: McpGrantSelect<ExtArgs> | null
+    /**
+     * Filter which McpGrant to delete.
+     */
+    where: McpGrantWhereUniqueInput
+  }
+
+  /**
+   * McpGrant deleteMany
+   */
+  export type McpGrantDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which McpGrants to delete
+     */
+    where?: McpGrantWhereInput
+  }
+
+  /**
+   * McpGrant without action
+   */
+  export type McpGrantDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the McpGrant
+     */
+    select?: McpGrantSelect<ExtArgs> | null
+  }
+
+
+  /**
    * Enums
    */
 
@@ -34850,7 +36858,9 @@ export namespace Prisma {
     waitUntil: 'waitUntil',
     durationMs: 'durationMs',
     callerTeamIds: 'callerTeamIds',
-    endReason: 'endReason'
+    endReason: 'endReason',
+    heartbeatFree: 'heartbeatFree',
+    grantId: 'grantId'
   };
 
   export type LeaseScalarFieldEnum = (typeof LeaseScalarFieldEnum)[keyof typeof LeaseScalarFieldEnum]
@@ -35049,6 +37059,33 @@ export namespace Prisma {
   };
 
   export type ProjectScalarFieldEnum = (typeof ProjectScalarFieldEnum)[keyof typeof ProjectScalarFieldEnum]
+
+
+  export const McpClientScalarFieldEnum: {
+    id: 'id',
+    name: 'name',
+    redirectUris: 'redirectUris',
+    createdAt: 'createdAt',
+    lastUsedAt: 'lastUsedAt'
+  };
+
+  export type McpClientScalarFieldEnum = (typeof McpClientScalarFieldEnum)[keyof typeof McpClientScalarFieldEnum]
+
+
+  export const McpGrantScalarFieldEnum: {
+    id: 'id',
+    userId: 'userId',
+    clientId: 'clientId',
+    scopes: 'scopes',
+    tokenHash: 'tokenHash',
+    createdAt: 'createdAt',
+    lastUsedAt: 'lastUsedAt',
+    expiresAt: 'expiresAt',
+    revokedAt: 'revokedAt',
+    rotatedFromId: 'rotatedFromId'
+  };
+
+  export type McpGrantScalarFieldEnum = (typeof McpGrantScalarFieldEnum)[keyof typeof McpGrantScalarFieldEnum]
 
 
   export const SortOrder: {
@@ -36643,6 +38680,8 @@ export namespace Prisma {
     durationMs?: FloatNullableFilter<"Lease"> | number | null
     callerTeamIds?: StringNullableFilter<"Lease"> | string | null
     endReason?: StringNullableFilter<"Lease"> | string | null
+    heartbeatFree?: BoolNullableFilter<"Lease"> | boolean | null
+    grantId?: StringNullableFilter<"Lease"> | string | null
     members?: LeaseMemberListRelationFilter
   }
 
@@ -36667,6 +38706,8 @@ export namespace Prisma {
     durationMs?: SortOrderInput | SortOrder
     callerTeamIds?: SortOrderInput | SortOrder
     endReason?: SortOrderInput | SortOrder
+    heartbeatFree?: SortOrderInput | SortOrder
+    grantId?: SortOrderInput | SortOrder
     members?: LeaseMemberOrderByRelationAggregateInput
   }
 
@@ -36694,6 +38735,8 @@ export namespace Prisma {
     durationMs?: FloatNullableFilter<"Lease"> | number | null
     callerTeamIds?: StringNullableFilter<"Lease"> | string | null
     endReason?: StringNullableFilter<"Lease"> | string | null
+    heartbeatFree?: BoolNullableFilter<"Lease"> | boolean | null
+    grantId?: StringNullableFilter<"Lease"> | string | null
     members?: LeaseMemberListRelationFilter
   }, "id">
 
@@ -36718,6 +38761,8 @@ export namespace Prisma {
     durationMs?: SortOrderInput | SortOrder
     callerTeamIds?: SortOrderInput | SortOrder
     endReason?: SortOrderInput | SortOrder
+    heartbeatFree?: SortOrderInput | SortOrder
+    grantId?: SortOrderInput | SortOrder
     _count?: LeaseCountOrderByAggregateInput
     _avg?: LeaseAvgOrderByAggregateInput
     _max?: LeaseMaxOrderByAggregateInput
@@ -36749,6 +38794,8 @@ export namespace Prisma {
     durationMs?: FloatNullableWithAggregatesFilter<"Lease"> | number | null
     callerTeamIds?: StringNullableWithAggregatesFilter<"Lease"> | string | null
     endReason?: StringNullableWithAggregatesFilter<"Lease"> | string | null
+    heartbeatFree?: BoolNullableWithAggregatesFilter<"Lease"> | boolean | null
+    grantId?: StringNullableWithAggregatesFilter<"Lease"> | string | null
   }
 
   export type LeaseMemberWhereInput = {
@@ -37760,6 +39807,135 @@ export namespace Prisma {
     name?: StringWithAggregatesFilter<"Project"> | string
     teamId?: StringNullableWithAggregatesFilter<"Project"> | string | null
     createdAt?: DateTimeWithAggregatesFilter<"Project"> | Date | string
+  }
+
+  export type McpClientWhereInput = {
+    AND?: McpClientWhereInput | McpClientWhereInput[]
+    OR?: McpClientWhereInput[]
+    NOT?: McpClientWhereInput | McpClientWhereInput[]
+    id?: StringFilter<"McpClient"> | string
+    name?: StringFilter<"McpClient"> | string
+    redirectUris?: StringFilter<"McpClient"> | string
+    createdAt?: DateTimeFilter<"McpClient"> | Date | string
+    lastUsedAt?: DateTimeFilter<"McpClient"> | Date | string
+  }
+
+  export type McpClientOrderByWithRelationInput = {
+    id?: SortOrder
+    name?: SortOrder
+    redirectUris?: SortOrder
+    createdAt?: SortOrder
+    lastUsedAt?: SortOrder
+  }
+
+  export type McpClientWhereUniqueInput = Prisma.AtLeast<{
+    id?: string
+    AND?: McpClientWhereInput | McpClientWhereInput[]
+    OR?: McpClientWhereInput[]
+    NOT?: McpClientWhereInput | McpClientWhereInput[]
+    name?: StringFilter<"McpClient"> | string
+    redirectUris?: StringFilter<"McpClient"> | string
+    createdAt?: DateTimeFilter<"McpClient"> | Date | string
+    lastUsedAt?: DateTimeFilter<"McpClient"> | Date | string
+  }, "id">
+
+  export type McpClientOrderByWithAggregationInput = {
+    id?: SortOrder
+    name?: SortOrder
+    redirectUris?: SortOrder
+    createdAt?: SortOrder
+    lastUsedAt?: SortOrder
+    _count?: McpClientCountOrderByAggregateInput
+    _max?: McpClientMaxOrderByAggregateInput
+    _min?: McpClientMinOrderByAggregateInput
+  }
+
+  export type McpClientScalarWhereWithAggregatesInput = {
+    AND?: McpClientScalarWhereWithAggregatesInput | McpClientScalarWhereWithAggregatesInput[]
+    OR?: McpClientScalarWhereWithAggregatesInput[]
+    NOT?: McpClientScalarWhereWithAggregatesInput | McpClientScalarWhereWithAggregatesInput[]
+    id?: StringWithAggregatesFilter<"McpClient"> | string
+    name?: StringWithAggregatesFilter<"McpClient"> | string
+    redirectUris?: StringWithAggregatesFilter<"McpClient"> | string
+    createdAt?: DateTimeWithAggregatesFilter<"McpClient"> | Date | string
+    lastUsedAt?: DateTimeWithAggregatesFilter<"McpClient"> | Date | string
+  }
+
+  export type McpGrantWhereInput = {
+    AND?: McpGrantWhereInput | McpGrantWhereInput[]
+    OR?: McpGrantWhereInput[]
+    NOT?: McpGrantWhereInput | McpGrantWhereInput[]
+    id?: StringFilter<"McpGrant"> | string
+    userId?: StringFilter<"McpGrant"> | string
+    clientId?: StringFilter<"McpGrant"> | string
+    scopes?: StringFilter<"McpGrant"> | string
+    tokenHash?: StringFilter<"McpGrant"> | string
+    createdAt?: DateTimeFilter<"McpGrant"> | Date | string
+    lastUsedAt?: DateTimeFilter<"McpGrant"> | Date | string
+    expiresAt?: DateTimeFilter<"McpGrant"> | Date | string
+    revokedAt?: DateTimeNullableFilter<"McpGrant"> | Date | string | null
+    rotatedFromId?: StringNullableFilter<"McpGrant"> | string | null
+  }
+
+  export type McpGrantOrderByWithRelationInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    clientId?: SortOrder
+    scopes?: SortOrder
+    tokenHash?: SortOrder
+    createdAt?: SortOrder
+    lastUsedAt?: SortOrder
+    expiresAt?: SortOrder
+    revokedAt?: SortOrderInput | SortOrder
+    rotatedFromId?: SortOrderInput | SortOrder
+  }
+
+  export type McpGrantWhereUniqueInput = Prisma.AtLeast<{
+    id?: string
+    AND?: McpGrantWhereInput | McpGrantWhereInput[]
+    OR?: McpGrantWhereInput[]
+    NOT?: McpGrantWhereInput | McpGrantWhereInput[]
+    userId?: StringFilter<"McpGrant"> | string
+    clientId?: StringFilter<"McpGrant"> | string
+    scopes?: StringFilter<"McpGrant"> | string
+    tokenHash?: StringFilter<"McpGrant"> | string
+    createdAt?: DateTimeFilter<"McpGrant"> | Date | string
+    lastUsedAt?: DateTimeFilter<"McpGrant"> | Date | string
+    expiresAt?: DateTimeFilter<"McpGrant"> | Date | string
+    revokedAt?: DateTimeNullableFilter<"McpGrant"> | Date | string | null
+    rotatedFromId?: StringNullableFilter<"McpGrant"> | string | null
+  }, "id">
+
+  export type McpGrantOrderByWithAggregationInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    clientId?: SortOrder
+    scopes?: SortOrder
+    tokenHash?: SortOrder
+    createdAt?: SortOrder
+    lastUsedAt?: SortOrder
+    expiresAt?: SortOrder
+    revokedAt?: SortOrderInput | SortOrder
+    rotatedFromId?: SortOrderInput | SortOrder
+    _count?: McpGrantCountOrderByAggregateInput
+    _max?: McpGrantMaxOrderByAggregateInput
+    _min?: McpGrantMinOrderByAggregateInput
+  }
+
+  export type McpGrantScalarWhereWithAggregatesInput = {
+    AND?: McpGrantScalarWhereWithAggregatesInput | McpGrantScalarWhereWithAggregatesInput[]
+    OR?: McpGrantScalarWhereWithAggregatesInput[]
+    NOT?: McpGrantScalarWhereWithAggregatesInput | McpGrantScalarWhereWithAggregatesInput[]
+    id?: StringWithAggregatesFilter<"McpGrant"> | string
+    userId?: StringWithAggregatesFilter<"McpGrant"> | string
+    clientId?: StringWithAggregatesFilter<"McpGrant"> | string
+    scopes?: StringWithAggregatesFilter<"McpGrant"> | string
+    tokenHash?: StringWithAggregatesFilter<"McpGrant"> | string
+    createdAt?: DateTimeWithAggregatesFilter<"McpGrant"> | Date | string
+    lastUsedAt?: DateTimeWithAggregatesFilter<"McpGrant"> | Date | string
+    expiresAt?: DateTimeWithAggregatesFilter<"McpGrant"> | Date | string
+    revokedAt?: DateTimeNullableWithAggregatesFilter<"McpGrant"> | Date | string | null
+    rotatedFromId?: StringNullableWithAggregatesFilter<"McpGrant"> | string | null
   }
 
   export type BuildCreateInput = {
@@ -39558,6 +41734,8 @@ export namespace Prisma {
     durationMs?: number | null
     callerTeamIds?: string | null
     endReason?: string | null
+    heartbeatFree?: boolean | null
+    grantId?: string | null
     members?: LeaseMemberCreateNestedManyWithoutLeaseInput
   }
 
@@ -39582,6 +41760,8 @@ export namespace Prisma {
     durationMs?: number | null
     callerTeamIds?: string | null
     endReason?: string | null
+    heartbeatFree?: boolean | null
+    grantId?: string | null
     members?: LeaseMemberUncheckedCreateNestedManyWithoutLeaseInput
   }
 
@@ -39606,6 +41786,8 @@ export namespace Prisma {
     durationMs?: NullableFloatFieldUpdateOperationsInput | number | null
     callerTeamIds?: NullableStringFieldUpdateOperationsInput | string | null
     endReason?: NullableStringFieldUpdateOperationsInput | string | null
+    heartbeatFree?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    grantId?: NullableStringFieldUpdateOperationsInput | string | null
     members?: LeaseMemberUpdateManyWithoutLeaseNestedInput
   }
 
@@ -39630,6 +41812,8 @@ export namespace Prisma {
     durationMs?: NullableFloatFieldUpdateOperationsInput | number | null
     callerTeamIds?: NullableStringFieldUpdateOperationsInput | string | null
     endReason?: NullableStringFieldUpdateOperationsInput | string | null
+    heartbeatFree?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    grantId?: NullableStringFieldUpdateOperationsInput | string | null
     members?: LeaseMemberUncheckedUpdateManyWithoutLeaseNestedInput
   }
 
@@ -39654,6 +41838,8 @@ export namespace Prisma {
     durationMs?: number | null
     callerTeamIds?: string | null
     endReason?: string | null
+    heartbeatFree?: boolean | null
+    grantId?: string | null
   }
 
   export type LeaseUpdateManyMutationInput = {
@@ -39677,6 +41863,8 @@ export namespace Prisma {
     durationMs?: NullableFloatFieldUpdateOperationsInput | number | null
     callerTeamIds?: NullableStringFieldUpdateOperationsInput | string | null
     endReason?: NullableStringFieldUpdateOperationsInput | string | null
+    heartbeatFree?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    grantId?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type LeaseUncheckedUpdateManyInput = {
@@ -39700,6 +41888,8 @@ export namespace Prisma {
     durationMs?: NullableFloatFieldUpdateOperationsInput | number | null
     callerTeamIds?: NullableStringFieldUpdateOperationsInput | string | null
     endReason?: NullableStringFieldUpdateOperationsInput | string | null
+    heartbeatFree?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    grantId?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type LeaseMemberCreateInput = {
@@ -40805,6 +42995,153 @@ export namespace Prisma {
     name?: StringFieldUpdateOperationsInput | string
     teamId?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type McpClientCreateInput = {
+    id: string
+    name: string
+    redirectUris: string
+    createdAt: Date | string
+    lastUsedAt: Date | string
+  }
+
+  export type McpClientUncheckedCreateInput = {
+    id: string
+    name: string
+    redirectUris: string
+    createdAt: Date | string
+    lastUsedAt: Date | string
+  }
+
+  export type McpClientUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    redirectUris?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type McpClientUncheckedUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    redirectUris?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type McpClientCreateManyInput = {
+    id: string
+    name: string
+    redirectUris: string
+    createdAt: Date | string
+    lastUsedAt: Date | string
+  }
+
+  export type McpClientUpdateManyMutationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    redirectUris?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type McpClientUncheckedUpdateManyInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    redirectUris?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type McpGrantCreateInput = {
+    id: string
+    userId: string
+    clientId: string
+    scopes: string
+    tokenHash: string
+    createdAt: Date | string
+    lastUsedAt: Date | string
+    expiresAt: Date | string
+    revokedAt?: Date | string | null
+    rotatedFromId?: string | null
+  }
+
+  export type McpGrantUncheckedCreateInput = {
+    id: string
+    userId: string
+    clientId: string
+    scopes: string
+    tokenHash: string
+    createdAt: Date | string
+    lastUsedAt: Date | string
+    expiresAt: Date | string
+    revokedAt?: Date | string | null
+    rotatedFromId?: string | null
+  }
+
+  export type McpGrantUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    userId?: StringFieldUpdateOperationsInput | string
+    clientId?: StringFieldUpdateOperationsInput | string
+    scopes?: StringFieldUpdateOperationsInput | string
+    tokenHash?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    expiresAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    rotatedFromId?: NullableStringFieldUpdateOperationsInput | string | null
+  }
+
+  export type McpGrantUncheckedUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    userId?: StringFieldUpdateOperationsInput | string
+    clientId?: StringFieldUpdateOperationsInput | string
+    scopes?: StringFieldUpdateOperationsInput | string
+    tokenHash?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    expiresAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    rotatedFromId?: NullableStringFieldUpdateOperationsInput | string | null
+  }
+
+  export type McpGrantCreateManyInput = {
+    id: string
+    userId: string
+    clientId: string
+    scopes: string
+    tokenHash: string
+    createdAt: Date | string
+    lastUsedAt: Date | string
+    expiresAt: Date | string
+    revokedAt?: Date | string | null
+    rotatedFromId?: string | null
+  }
+
+  export type McpGrantUpdateManyMutationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    userId?: StringFieldUpdateOperationsInput | string
+    clientId?: StringFieldUpdateOperationsInput | string
+    scopes?: StringFieldUpdateOperationsInput | string
+    tokenHash?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    expiresAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    rotatedFromId?: NullableStringFieldUpdateOperationsInput | string | null
+  }
+
+  export type McpGrantUncheckedUpdateManyInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    userId?: StringFieldUpdateOperationsInput | string
+    clientId?: StringFieldUpdateOperationsInput | string
+    scopes?: StringFieldUpdateOperationsInput | string
+    tokenHash?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    expiresAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    revokedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    rotatedFromId?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type StringFilter<$PrismaModel = never> = {
@@ -42065,6 +44402,8 @@ export namespace Prisma {
     durationMs?: SortOrder
     callerTeamIds?: SortOrder
     endReason?: SortOrder
+    heartbeatFree?: SortOrder
+    grantId?: SortOrder
   }
 
   export type LeaseAvgOrderByAggregateInput = {
@@ -42096,6 +44435,8 @@ export namespace Prisma {
     durationMs?: SortOrder
     callerTeamIds?: SortOrder
     endReason?: SortOrder
+    heartbeatFree?: SortOrder
+    grantId?: SortOrder
   }
 
   export type LeaseMinOrderByAggregateInput = {
@@ -42119,6 +44460,8 @@ export namespace Prisma {
     durationMs?: SortOrder
     callerTeamIds?: SortOrder
     endReason?: SortOrder
+    heartbeatFree?: SortOrder
+    grantId?: SortOrder
   }
 
   export type LeaseSumOrderByAggregateInput = {
@@ -42772,6 +45115,69 @@ export namespace Prisma {
     name?: SortOrder
     teamId?: SortOrder
     createdAt?: SortOrder
+  }
+
+  export type McpClientCountOrderByAggregateInput = {
+    id?: SortOrder
+    name?: SortOrder
+    redirectUris?: SortOrder
+    createdAt?: SortOrder
+    lastUsedAt?: SortOrder
+  }
+
+  export type McpClientMaxOrderByAggregateInput = {
+    id?: SortOrder
+    name?: SortOrder
+    redirectUris?: SortOrder
+    createdAt?: SortOrder
+    lastUsedAt?: SortOrder
+  }
+
+  export type McpClientMinOrderByAggregateInput = {
+    id?: SortOrder
+    name?: SortOrder
+    redirectUris?: SortOrder
+    createdAt?: SortOrder
+    lastUsedAt?: SortOrder
+  }
+
+  export type McpGrantCountOrderByAggregateInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    clientId?: SortOrder
+    scopes?: SortOrder
+    tokenHash?: SortOrder
+    createdAt?: SortOrder
+    lastUsedAt?: SortOrder
+    expiresAt?: SortOrder
+    revokedAt?: SortOrder
+    rotatedFromId?: SortOrder
+  }
+
+  export type McpGrantMaxOrderByAggregateInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    clientId?: SortOrder
+    scopes?: SortOrder
+    tokenHash?: SortOrder
+    createdAt?: SortOrder
+    lastUsedAt?: SortOrder
+    expiresAt?: SortOrder
+    revokedAt?: SortOrder
+    rotatedFromId?: SortOrder
+  }
+
+  export type McpGrantMinOrderByAggregateInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    clientId?: SortOrder
+    scopes?: SortOrder
+    tokenHash?: SortOrder
+    createdAt?: SortOrder
+    lastUsedAt?: SortOrder
+    expiresAt?: SortOrder
+    revokedAt?: SortOrder
+    rotatedFromId?: SortOrder
   }
 
   export type SessionCreateNestedManyWithoutBuildInput = {
@@ -45589,6 +47995,8 @@ export namespace Prisma {
     durationMs?: number | null
     callerTeamIds?: string | null
     endReason?: string | null
+    heartbeatFree?: boolean | null
+    grantId?: string | null
   }
 
   export type LeaseUncheckedCreateWithoutMembersInput = {
@@ -45612,6 +48020,8 @@ export namespace Prisma {
     durationMs?: number | null
     callerTeamIds?: string | null
     endReason?: string | null
+    heartbeatFree?: boolean | null
+    grantId?: string | null
   }
 
   export type LeaseCreateOrConnectWithoutMembersInput = {
@@ -45651,6 +48061,8 @@ export namespace Prisma {
     durationMs?: NullableFloatFieldUpdateOperationsInput | number | null
     callerTeamIds?: NullableStringFieldUpdateOperationsInput | string | null
     endReason?: NullableStringFieldUpdateOperationsInput | string | null
+    heartbeatFree?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    grantId?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type LeaseUncheckedUpdateWithoutMembersInput = {
@@ -45674,6 +48086,8 @@ export namespace Prisma {
     durationMs?: NullableFloatFieldUpdateOperationsInput | number | null
     callerTeamIds?: NullableStringFieldUpdateOperationsInput | string | null
     endReason?: NullableStringFieldUpdateOperationsInput | string | null
+    heartbeatFree?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    grantId?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type TeamCreateWithoutApiKeysInput = {
@@ -48556,6 +50970,14 @@ export namespace Prisma {
      * @deprecated Use ProjectDefaultArgs instead
      */
     export type ProjectArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = ProjectDefaultArgs<ExtArgs>
+    /**
+     * @deprecated Use McpClientDefaultArgs instead
+     */
+    export type McpClientArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = McpClientDefaultArgs<ExtArgs>
+    /**
+     * @deprecated Use McpGrantDefaultArgs instead
+     */
+    export type McpGrantArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = McpGrantDefaultArgs<ExtArgs>
 
   /**
    * Batch Payload for updateMany & deleteMany & createMany

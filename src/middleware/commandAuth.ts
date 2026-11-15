@@ -1,7 +1,14 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import type { IncomingHttpHeaders } from 'http';
 import { envSwitchOn } from '../services/sessionTokenGate';
-import { CallerVerdict, PresentedCredential, readPresentedCredential } from './commandCaller';
+import {
+  CallerVerdict,
+  CommandCaller,
+  PresentedCredential,
+  commandCallerOf,
+  readPresentedCredential,
+} from './commandCaller';
+import { mcpContextOf } from '../mcp/invokeApi';
 
 /**
  * Per-command auth for WebDriver session commands.
@@ -119,7 +126,18 @@ export async function decideSessionAccess(
     return { allow: false, caller: 'invalid credentials', reason: 'credentials did not verify' };
   }
 
-  const { caller } = verdict;
+  return decideCallerAccess(verdict.caller, sessionIds, deps);
+}
+
+/**
+ * May this verified caller use every one of these sessions? An override admin
+ * may use any, anyone else only sessions they own. Never throws.
+ */
+export async function decideCallerAccess(
+  caller: CommandCaller,
+  sessionIds: readonly string[],
+  deps: Pick<CommandAuthDeps, 'ownerOf'>,
+): Promise<SessionAccessDecision> {
   if (caller.overrideAdmin) return { allow: true };
 
   for (const sessionId of sessionIds) {
@@ -158,7 +176,14 @@ export function createCommandAuthMiddleware(deps: CommandAuthDeps): RequestHandl
     const sessionId = String(req.params?.sessionId ?? '');
     const where = `${req.method} ${String(req.originalUrl ?? req.url).split('?')[0]}`;
 
-    decideSessionAccess(req.headers, [sessionId], deps)
+    // An MCP tool's command, run in process (invokeWebDriver): /xenon/mcp
+    // verified its caller, kept on the request object under a symbol no
+    // network request can set. The owner check is the same.
+    const preset = mcpContextOf(req);
+    const decided = preset
+      ? decideCallerAccess(commandCallerOf(preset), [sessionId], deps)
+      : decideSessionAccess(req.headers, [sessionId], deps);
+    decided
       .then((decision) => {
         if ('unavailable' in decision) {
           deps.logger.error(

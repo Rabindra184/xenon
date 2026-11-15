@@ -1,6 +1,9 @@
 import { Router, Request, Response } from 'express';
 import pkg from '../../../package.json';
+import { Container } from 'typedi';
 import { roleGuard } from '../../middleware/roleGuard';
+import { PluginContext } from '../../PluginContext';
+import { servesMcp } from '../../mcp/publicOrigin';
 
 /**
  * What a client can rely on, so it asks this list rather than compares
@@ -60,6 +63,8 @@ import { roleGuard } from '../../middleware/roleGuard';
  *   `video.mp4` take `host` beside `udid` (after 2.34.0).
  * - `lease-host`: a lease's `filters.host` takes only the phone on that
  *   server (after 2.35.0).
+ * - `mcp-server`: a hub or standalone server serves MCP at `/xenon/mcp`
+ *   (`features.mcpServer` in `/capabilities`) (after 2.37.0).
  */
 const SUPPORTS = [
   'leases',
@@ -87,13 +92,19 @@ const SUPPORTS = [
   'phone-host',
   'phone-host-events',
   'lease-host',
+  'mcp-server',
 ] as const;
 
 export default function register(apiRouter: Router): void {
   const router = Router();
   router.use(roleGuard('MEMBER'));
   router.get('/', (_req: Request, res: Response) => {
-    res.json({ pluginVersion: pkg.version, supports: [...SUPPORTS] });
+    // A node doesn't serve /xenon/mcp (servesMcp), so it doesn't say it does.
+    const servesMcpHere = servesMcp(Container.get(PluginContext).pluginArgs);
+    res.json({
+      pluginVersion: pkg.version,
+      supports: SUPPORTS.filter((s) => s !== 'mcp-server' || servesMcpHere),
+    });
   });
   apiRouter.use('/sdk/version', router);
 }
