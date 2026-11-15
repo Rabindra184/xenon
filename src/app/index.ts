@@ -49,6 +49,7 @@ import { registerNodeSessionMetrics } from '../gateway/nodeSessionMetrics';
 import { registerNodeSessionDeviceLogs } from '../gateway/nodeSessionDeviceLogs';
 import { dashboardPluginMiddlewareFor } from './dashboardPluginLink';
 import { registerMcpEndpoint } from '../mcp/mcpEndpoint';
+import { registerOAuthConsentRoutes, registerOAuthRoutes } from './routers/oauth';
 import { serveToolsFrom } from '../mcp/invokeApi';
 
 const ASYNC_LOCK = new AsyncLock();
@@ -59,6 +60,14 @@ forwardAsyncErrors();
 const router = express.Router(),
   apiRouter = express.Router(),
   staticFilesRouter = express.Router();
+
+// Agent sign-in's routes (routers/oauth.ts), filled by createRouter on a
+// server that serves MCP: one router ahead of the CSRF check and the login,
+// one after. Made once, like apiRouter, so where they sit in it is where the
+// first createRouter call put them, whatever the call's options (a spec's
+// first call may be a node's, which serves none of them).
+const oauthPublicRouter = express.Router(),
+  oauthConsentRouter = express.Router();
 
 // The MCP tools run their REST routes through this router, in process
 // (src/mcp/invokeApi.ts): every route createRouter adds to it below.
@@ -202,6 +211,14 @@ function createRouter(
   pluginArgs: IPluginArgs,
   ownServer?: { address?: string; port: number; tls?: boolean },
 ) {
+  // Sign-in for agents (OAuth: register, authorize, token, revoke), on a hub
+  // or standalone server: ahead of the CSRF check and the login. An agent's
+  // token call carries no Origin and no credential but its PKCE verifier and
+  // code, and these routes read no cookie for any decision but where the
+  // browser goes next (oauth.ts).
+  apiRouter.use('/oauth', oauthPublicRouter);
+  registerOAuthRoutes(oauthPublicRouter, pluginArgs);
+
   // CSRF defense (runs before /health so even a hostile GET->POST confused-
   // deputy has no soft target). Pass-through for GETs, for header-authed
   // callers, and when authDisabled=true. Returns 403 for cookie-authed
@@ -245,6 +262,9 @@ function createRouter(
 
   // Authenticated auth endpoints: /me, /change-password, /token
   apiRouter.use('/auth', authAuthedRouter());
+  // An agent's sign-in, allowed or denied by the signed-in dashboard user.
+  apiRouter.use('/oauth', oauthConsentRouter);
+  registerOAuthConsentRoutes(oauthConsentRouter, pluginArgs);
 
   // Admin: API key management
   apiRouter.use('/apikeys', apiKeysRouter());

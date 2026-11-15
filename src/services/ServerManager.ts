@@ -57,6 +57,7 @@ import {
 import { resetDevicesAtBoot } from '../data-service/deviceSettings';
 import { PhoneNetworkRestore } from './network/PhoneNetworkRestore';
 import { createRouter } from '../app';
+import { oauthWellKnownRouter } from '../app/routers/oauth';
 import {
   commandAuthDeps,
   registerSessionGateway,
@@ -606,6 +607,9 @@ export class ServerManager {
   ) {
     // An MCP tool's WebDriver command runs through this app (invokeWebDriver).
     Container.get(PluginContext).expressApp = expressApp;
+    // How an agent learns to sign in to /xenon/mcp (RFC 9728, RFC 8414): on
+    // the server's root, where the standards put them.
+    expressApp.use(oauthWellKnownRouter(pluginArgs));
     expressApp.use(
       '/xenon',
       createRouter(pluginArgs, {

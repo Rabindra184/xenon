@@ -117,6 +117,11 @@ export function scopesForRole(role: 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER'): string 
   return 'devices,sessions,read,apps';
 }
 
+/** The dashboard sign-in (a UserSession id) the request's cookie names, if any; unchecked. */
+export function dashboardSessionIdOf(req: Request): string | undefined {
+  return readCookie(req, SESSION_COOKIE);
+}
+
 function readCookie(req: Request, name: string): string | undefined {
   const header = req.headers.cookie;
   if (!header) return undefined;

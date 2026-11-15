@@ -7,6 +7,12 @@ import { PluginContext } from '../PluginContext';
 export const MCP_PATH = '/xenon/mcp';
 
 /**
+ * Where an agent learns how to sign in to the endpoint (RFC 9728): named by
+ * the endpoint's 401 challenge, served by the sign-in routes (oauth.ts).
+ */
+export const RESOURCE_METADATA_PATH = `/.well-known/oauth-protected-resource${MCP_PATH}`;
+
+/**
  * Whether this server serves `/xenon/mcp`: a hub or a standalone server
  * does, a node (one started with `hub`) doesn't, since its phones are
  * reached through its hub. registerMcpEndpoint and `/capabilities` both ask.

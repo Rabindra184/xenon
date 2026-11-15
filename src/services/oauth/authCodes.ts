@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'crypto';
 import { Service } from 'typedi';
+import { TooManyRequestsError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 
 /** An authorization code lasts this long. */
 export const AUTH_CODE_TTL_MS = 60_000;
@@ -55,14 +56,20 @@ function hashOf(code: string): string {
 export class AuthCodes {
   private codes = new Map<string, Entry>();
 
-  /** A new code for a consented sign-in. Throws for a challenge that is no S256 hash. */
+  /**
+   * A new code for a consented sign-in. Throws for a challenge that is no
+   * S256 hash, and `too_many_requests` (the SDK's TooManyRequestsError, which
+   * the consent route answers as 429) while 10,000 codes are outstanding.
+   */
   issue(input: AuthCodeInput): string {
     if (!S256_CHALLENGE.test(input.codeChallenge)) {
       throw new Error('the code challenge must be an S256 challenge');
     }
     const now = Date.now();
     this.prune(now);
-    if (this.codes.size >= MAX_CODES) throw new Error('too many sign-ins in progress');
+    if (this.codes.size >= MAX_CODES) {
+      throw new TooManyRequestsError('Too many sign-ins are in progress; try again in a minute');
+    }
     const code = randomBytes(32).toString('base64url');
     this.codes.set(hashOf(code), {
       ...input,

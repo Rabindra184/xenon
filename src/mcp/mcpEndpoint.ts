@@ -7,13 +7,10 @@ import type { IPluginArgs } from '../interfaces/IPluginArgs';
 import { McpCaller, resolveMcpCaller } from './mcpCredential';
 import { toolsFor } from './toolRegistry';
 import { runTool } from './toolCall';
-import { publicOrigin, servesMcp } from './publicOrigin';
+import { RESOURCE_METADATA_PATH, publicOrigin, servesMcp } from './publicOrigin';
 import pkg from '../../package.json';
 
 const logger = log.scope('McpEndpoint');
-
-/** Where an agent learns how to sign in to this endpoint (RFC 9728). */
-const RESOURCE_METADATA_PATH = '/.well-known/oauth-protected-resource/xenon/mcp';
 
 /**
  * `/xenon/mcp`: the lab's tools for AI coding agents, over MCP Streamable
@@ -39,9 +36,15 @@ export function registerMcpEndpoint(router: Router, pluginArgs: IPluginArgs): vo
 /**
  * A browser names the page that sent a request in `Origin`; an agent sends
  * none. A request from any page but this server's own is refused before its
- * credentials are read, as MCP's Streamable HTTP transport asks (against DNS
- * rebinding): with auth disabled no credential stands in the way, and a page
- * would otherwise call every tool.
+ * credentials are read: with auth disabled no credential stands in the way,
+ * and another site's page would otherwise call every tool.
+ *
+ * "This server's own" is publicOrigin: XENON_PUBLIC_URL's origin when it is
+ * set, else the request's own Host. So this stops a cross-site page, but not
+ * DNS rebinding while XENON_PUBLIC_URL is unset: a page served from the
+ * attacker's name, rebound to this server's address, sends a matching
+ * Origin and Host. With XENON_PUBLIC_URL set the Origin must be that one.
+ * MCP's transport guidance also asks for a Host check, which isn't here.
  */
 function refuseOtherOrigins(req: Request, res: Response, next: NextFunction): void {
   const origin = req.headers.origin;
