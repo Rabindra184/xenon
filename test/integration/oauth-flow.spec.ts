@@ -29,7 +29,11 @@ import { createRouter } from '../../src/app/index';
 import { oauthWellKnownRouter, resetOAuthRateLimits } from '../../src/app/routers/oauth';
 import { JwtKeyService } from '../../src/services/token/JwtKeyService';
 import { AuthCodes } from '../../src/services/oauth/authCodes';
-import { ClientStore } from '../../src/services/oauth/clientStore';
+import { ClientStore, DOCUMENT_UNREACHABLE } from '../../src/services/oauth/clientStore';
+import {
+  ClientMetadataRefused,
+  resetClientDocumentFallback,
+} from '../../src/services/oauth/clientMetadataDocument';
 import { PendingAuthorizations } from '../../src/services/oauth/pendingAuthorizations';
 import { config } from '../../src/config';
 import { DefaultPluginArgs } from '../../src/interfaces/IPluginArgs';
@@ -351,6 +355,36 @@ describe('agent sign-in (OAuth) end to end', () => {
     } finally {
       if (saved === undefined) delete process.env.XENON_MCP_CLIENT_DOCUMENTS;
       else process.env.XENON_MCP_CLIENT_DOCUMENTS = saved;
+    }
+  });
+
+  it('a client_id document that cannot be fetched turns documents off in the metadata for an hour', async () => {
+    const store = Container.get(ClientStore);
+    const fetchDocument = store.fetchDocument;
+    store.fetchDocument = sinon
+      .stub()
+      .rejects(new ClientMetadataRefused('unreachable', 'agent.example: connection refused'));
+    try {
+      const url = new URL(`${origin}/xenon/api/oauth/authorize`);
+      url.searchParams.set('response_type', 'code');
+      url.searchParams.set('client_id', 'https://agent.example/client.json');
+      url.searchParams.set('redirect_uri', 'http://127.0.0.1:5000/cb');
+      url.searchParams.set('code_challenge', 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
+      url.searchParams.set('code_challenge_method', 'S256');
+      url.searchParams.set('resource', `${origin}/xenon/mcp`);
+      const refused = await request(origin)
+        .get(url.pathname + url.search)
+        .set('x-forwarded-for', testAddress);
+      expect(refused.status).to.equal(400);
+      expect(refused.body.error_description).to.equal(DOCUMENT_UNREACHABLE);
+
+      const metadata = await request(origin).get('/.well-known/oauth-authorization-server');
+      expect(metadata.body.client_id_metadata_document_supported).to.equal(false);
+      const agent = await signIn();
+      expect(agent.saved?.access_token).to.be.a('string');
+    } finally {
+      store.fetchDocument = fetchDocument;
+      resetClientDocumentFallback();
     }
   });
 

@@ -6,14 +6,19 @@ import forge from 'node-forge';
 import { PassThrough } from 'stream';
 import type { AddressInfo } from 'net';
 import {
+  CLIENT_DOCUMENT_FALLBACK_MS,
   ClientMetadataRefused,
   MetadataFetchDeps,
   MetadataResponse,
   ResolvedAddress,
   clearClientMetadataCache,
+  clientDocumentsAccepted,
+  clientDocumentsOffered,
   fetchClientMetadataDocument,
   isPublicAddress,
+  noteUnreachableClientDocument,
   openPinned,
+  resetClientDocumentFallback,
 } from '../../src/services/oauth/clientMetadataDocument';
 
 const DOC_URL = 'https://agent.example/oauth/client.json';
@@ -344,5 +349,61 @@ describe('client metadata documents', () => {
       }
       expect(failed).to.equal(true);
     });
+  });
+});
+
+/**
+ * A hub on a network without internet access can't fetch an agent's
+ * document. One network failure turns documents off for an hour, so the
+ * agent's next sign-in registers with the hub instead.
+ */
+describe("falling back when documents can't be fetched", () => {
+  const t = 1_000_000;
+  const minutes = (n: number) => n * 60_000;
+  let saved: string | undefined;
+  beforeEach(() => {
+    saved = process.env.XENON_MCP_CLIENT_DOCUMENTS;
+    delete process.env.XENON_MCP_CLIENT_DOCUMENTS;
+  });
+  afterEach(() => {
+    resetClientDocumentFallback();
+    if (saved === undefined) delete process.env.XENON_MCP_CLIENT_DOCUMENTS;
+    else process.env.XENON_MCP_CLIENT_DOCUMENTS = saved;
+  });
+
+  it('is on until a network failure, then off for an hour', () => {
+    expect(clientDocumentsOffered(t)).to.equal(true);
+    expect(noteUnreachableClientDocument(t)).to.equal(true);
+    expect(clientDocumentsOffered(t + 1)).to.equal(false);
+    expect(clientDocumentsOffered(t + CLIENT_DOCUMENT_FALLBACK_MS - 1)).to.equal(false);
+    expect(clientDocumentsOffered(t + CLIENT_DOCUMENT_FALLBACK_MS)).to.equal(true);
+  });
+
+  it('restarts the hour on each failure, and says only the first opened it', () => {
+    expect(noteUnreachableClientDocument(t)).to.equal(true);
+    expect(noteUnreachableClientDocument(t + minutes(30))).to.equal(false);
+    expect(clientDocumentsOffered(t + minutes(61))).to.equal(false);
+    expect(clientDocumentsOffered(t + minutes(30) + CLIENT_DOCUMENT_FALLBACK_MS)).to.equal(true);
+  });
+
+  it('opens a new window after the last one ran out', () => {
+    expect(noteUnreachableClientDocument(t)).to.equal(true);
+    expect(noteUnreachableClientDocument(t + CLIENT_DOCUMENT_FALLBACK_MS)).to.equal(true);
+  });
+
+  it('still reads documents for agents already named by one while it falls back', () => {
+    noteUnreachableClientDocument(t);
+    expect(clientDocumentsOffered(t + 1)).to.equal(false);
+    expect(clientDocumentsAccepted()).to.equal(true);
+  });
+
+  it('stays off while XENON_MCP_CLIENT_DOCUMENTS=off, whatever the window', () => {
+    process.env.XENON_MCP_CLIENT_DOCUMENTS = 'off';
+    expect(clientDocumentsOffered(t)).to.equal(false);
+    expect(clientDocumentsAccepted()).to.equal(false);
+    noteUnreachableClientDocument(t);
+    delete process.env.XENON_MCP_CLIENT_DOCUMENTS;
+    expect(clientDocumentsOffered(t + 1)).to.equal(false);
+    expect(clientDocumentsOffered(t + CLIENT_DOCUMENT_FALLBACK_MS)).to.equal(true);
   });
 });

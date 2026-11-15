@@ -62,15 +62,19 @@ the person in the browser what happened.
   - **What trips it:** a fetch refused for a reason in `NETWORK_REASONS`
     (`unresolvable`, `private_address`, `unreachable`, `timeout`) notes
     the time.
-  - **What it changes:** `clientDocumentsAccepted()` answers false for one
-    hour after the last such failure, and while
-    `XENON_MCP_CLIENT_DOCUMENTS=off` is set, as now.
+  - **What it changes:** discovery's `client_id_metadata_document_supported`
+    reads a new `clientDocumentsOffered()`. It answers false for one hour
+    after the last such failure, and while `XENON_MCP_CLIENT_DOCUMENTS=off`
+    is set.
   - **Timing:** each further network failure restarts the hour. Nothing
-    else resets it, and it is in memory, so a restart starts with
-    documents on again.
-  - **What it reaches:** discovery's `client_id_metadata_document_supported`
-    and the store's URL-`client_id` path both read
-    `clientDocumentsAccepted()`, so both follow.
+    else resets it, and it is in memory, so a restart offers documents
+    again.
+  - **What it doesn't change:** whether the hub reads a URL `client_id`.
+    That stays `clientDocumentsAccepted()`, the switch alone. The store's
+    path also serves refresh, and the fallback can be tripped by anyone, so
+    turning reading off would have signed out every agent named by a
+    document for an hour. *(Changed while building: the first version had
+    the store follow the fallback too.)*
   - **What it logs:** the first failure in a window logs one warning,
     saying documents are off for an hour and that
     `XENON_MCP_CLIENT_DOCUMENTS=off` makes it permanent.
@@ -99,11 +103,11 @@ the person in the browser what happened.
 ## Risk
 
 Anyone who can reach the authorize page can trip the fallback, by naming a
-URL `client_id` that doesn't resolve. For an hour, agents then register
-with the hub instead of naming themselves by URL. That always works, but
-it uses registration slots: 20 per address an hour and 500 in all, the
-least-used evicted. That is no different from an agent registering
-anyway, and an agent that already signed in keeps its grant.
+URL `client_id` that doesn't resolve. For an hour, discovery then tells new
+agents to register with the hub. That always works, but it uses
+registration slots: 20 per address an hour and 500 in all, the least-used
+evicted. An agent already signed in by a document keeps refreshing, because
+the hub still reads documents during the fallback.
 
 ## Left to the builder
 

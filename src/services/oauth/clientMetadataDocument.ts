@@ -392,16 +392,53 @@ async function fetchFresh(raw: string, url: URL, deps: MetadataFetchDeps): Promi
 const cache = new Map<string, { metadata: ClientMetadata; until: number }>();
 const inflight = new Map<string, Promise<ClientMetadata>>();
 
+/** How long documents aren't offered after one couldn't be fetched for a network reason. */
+export const CLIENT_DOCUMENT_FALLBACK_MS = 60 * 60_000;
+
+/** When a document last couldn't be fetched for a network reason, in this process. */
+let unreachableAt: number | undefined;
+
 /**
- * Whether this hub reads client ID metadata documents: unless
- * `XENON_MCP_CLIENT_DOCUMENTS` is `off` (read on every call). A lab on a
- * closed network can't fetch an agent's document from the internet, so it
- * turns them off: the authorization-server metadata then says so
- * (`client_id_metadata_document_supported: false`), an agent registers
- * instead, and a URL `client_id` is refused without a fetch.
+ * Whether this hub reads client ID metadata documents at all: unless
+ * `XENON_MCP_CLIENT_DOCUMENTS` is `off` (read on every call). With it off a
+ * URL `client_id` is refused without a fetch, refreshes included: a lab on a
+ * closed network, whose hub can't fetch an agent's document from the internet.
  */
 export function clientDocumentsAccepted(): boolean {
   return (process.env.XENON_MCP_CLIENT_DOCUMENTS ?? '').trim().toLowerCase() !== 'off';
+}
+
+/**
+ * Whether the authorization-server metadata offers documents
+ * (`client_id_metadata_document_supported`): when they are accepted, and not
+ * within an hour of one that couldn't be fetched for a network reason. An
+ * agent told they aren't offered registers with the hub instead, so after
+ * one failed sign-in on a hub without internet access the next one works,
+ * with no setting changed. Each such failure restarts the hour; a restart
+ * forgets it. The hub still reads documents meanwhile, so an agent already
+ * signed in by one keeps refreshing: anyone can trip this by naming a URL
+ * that doesn't resolve, and it must never stop a sign-in that would work.
+ */
+export function clientDocumentsOffered(now: number = Date.now()): boolean {
+  if (!clientDocumentsAccepted()) return false;
+  return unreachableAt === undefined || now - unreachableAt >= CLIENT_DOCUMENT_FALLBACK_MS;
+}
+
+/**
+ * A document couldn't be fetched for a network reason: documents aren't
+ * offered for the next hour. Whether this started the hour (they were offered
+ * until now), rather than restarting one already running.
+ */
+export function noteUnreachableClientDocument(now: number = Date.now()): boolean {
+  const opened =
+    unreachableAt === undefined || now - unreachableAt >= CLIENT_DOCUMENT_FALLBACK_MS;
+  unreachableAt = now;
+  return opened;
+}
+
+/** Forget the fallback. For specs. */
+export function resetClientDocumentFallback(): void {
+  unreachableAt = undefined;
 }
 
 /** Forget every document kept. For specs. */
