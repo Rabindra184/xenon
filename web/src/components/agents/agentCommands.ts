@@ -57,7 +57,8 @@ export function agentSetups(hubUrl: string): AgentSetup[] {
       label: 'Codex',
       kind: 'command',
       text: `codex mcp add xenon --url ${mcpUrl}`,
-      after: 'Codex opens this browser for you to sign in. If you close it first, run codex mcp login xenon.',
+      after:
+        'Codex opens this browser for you to sign in. If you close it first, run codex mcp login xenon.',
     },
     {
       client: 'gemini',
@@ -73,6 +74,7 @@ export function agentSetups(hubUrl: string): AgentSetup[] {
       kind: 'config',
       file: '~/.cursor/mcp.json',
       text: configEntry('url', mcpUrl),
+      after: "Then open Cursor's MCP settings and click Authenticate next to xenon.",
     },
     {
       client: 'vscode',

@@ -53,6 +53,10 @@ describe('agentSetups', () => {
       file: '~/.cursor/mcp.json',
       json: { mcpServers: { xenon: { url: MCP_URL } } },
     });
+    // Cursor lists the server as needing sign-in and waits for a click.
+    expect(byClient.cursor).toMatchObject({
+      after: "Then open Cursor's MCP settings and click Authenticate next to xenon.",
+    });
     expect(entry('windsurf')).toEqual({
       file: '~/.codeium/windsurf/mcp_config.json',
       json: { mcpServers: { xenon: { serverUrl: MCP_URL } } },
