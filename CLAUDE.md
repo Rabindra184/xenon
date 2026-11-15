@@ -2408,7 +2408,8 @@ docs: `website/docs/ai-agents.mdx`. Design:
 **The endpoint** (`mcpEndpoint.ts`). On the `/xenon` router beside `/api` and
 outside its login. Served on a hub or standalone server whatever
 `enableDashboard` says, never on a node (`servesMcp`: no `hub` option), which
-also decides `features.mcpServer` and `/sdk/version`'s `mcp-server`.
+also decides `features.mcpServer` and `/sdk/version`'s `mcp-server`
+(`features.mcpServer.oauth` is false with auth disabled).
 
 - Stateless: each POST gets its own `McpServer` and transport, no MCP session,
   JSON answers (`enableJsonResponse`). Every other method is `405`.
@@ -2459,16 +2460,24 @@ protocol error.
   heartbeat-free.
 - `xenon_healing_events` asks `GET /session/:id` first, so an unknown or
   hidden session is REST's not-found (Studio answered `[]`).
-  `xenon_execute_script` needs `sessionId` (the hub has no current session);
-  CommandInterceptor answers local `xe:` scripts before its hooks, so they
-  get no `SessionLog` row.
+  `xenon_execute_script` needs `sessionId` (the hub has no current session),
+  and runs only a name in `XENON_SCRIPT_NAMES` alone after its prefix
+  (`xenonScriptName`): `xe: document.title` is labelled JavaScript in a
+  webview, which the driver would run, so it and an unknown name are
+  `bad_request` before the session is looked up. CommandInterceptor answers
+  local `xe:` scripts before its hooks, so a session on the hub's own phones
+  gets no `SessionLog` row for them; a node session's is recorded by the
+  hub's gateway hooks (dashboard on).
 - `xenon_session_capabilities` mints a `xenon-session` token
   (`mintSessionToken`, with the caller's `gid`), and with a lease puts member
   0's capabilities, `leaseId`, `leaseToken` and `leaseMember` in
   `xe:options`. With per-command auth on, `remoteServerUrl` carries the token
-  as Basic `xenon-session:<token>`. The token lives `XENON_MCP_TOKEN_TTL_SEC`,
-  cut to the minting credential's remaining life (an hour at most under a
-  browser sign-in).
+  as Basic `xenon-session:<token>`. The token lives `XENON_MCP_TOKEN_TTL_SEC`
+  and the tool answers `expiresAt` (epoch ms). For a grant-bound caller
+  (`grantId`) that is the whole TTL, not the access token's remaining hour:
+  the token carries `gid` and is refused the moment its grant is revoked.
+  Any other caller's is cut to its credential's remaining life
+  (`mintedLifetimeSec`).
 
 **Agent leases.** `xenon_acquire_device` is `POST /sdk/leases` through
 `invokeApi`, so the lease is heartbeat-free (see "Device leases"), 15 minutes
@@ -2489,16 +2498,24 @@ run `http://lab-mac:4723`), with the SDK's own rate limiters off.
   MCP scope; the role cuts them.
 - Clients (`ClientStore`, `McpClient`): dynamic registration, at most 20 per
   address an hour and 500 in all, dropped after 30 days unused (a lookup by an
-  unauthenticated authorize or token call doesn't count as use). Or a client
-  ID metadata document (`clientMetadataDocument.ts`): an https URL as
-  `client_id`, fetched only from public addresses, pinned to the checked
-  address, no redirects, 64 KB, 5 s, cached 10 minutes, no row.
+  unauthenticated authorize or token call doesn't count as use). At the cap
+  the longest-unused client with no live grant is evicted, never one
+  registered in the last 10 minutes (`NEW_CLIENT_KEPT_MS`: it has no grant
+  until its user allows it). Or a client ID metadata document
+  (`clientMetadataDocument.ts`): an https URL as `client_id`, fetched only
+  from public addresses, pinned to the checked address, no redirects, 64 KB,
+  5 s, cached 10 minutes, no row. `XENON_MCP_CLIENT_DOCUMENTS=off`
+  (`clientDocumentsAccepted`, read per call) is for a lab that can't reach
+  the internet: the metadata says `client_id_metadata_document_supported:
+  false`, and a URL `client_id` is `invalid_client` without a fetch.
 - Authorize: PKCE `S256` required, `resource` (missing is bound to this hub)
   must be this hub's MCP URL. Every bad parameter is answered to the browser
   directly (`answerDirectly`), never by a redirect to the agent: before
   consent the hub sends a browser only to its own pages (no open redirector).
-  The request waits (`PendingAuthorizations`, 10 minutes, at most 10 per
-  address) and the browser always goes to `/xenon/oauth/consent/<id>`: the
+  The request waits (`PendingAuthorizations`, 10 minutes, 10 per address: an
+  eleventh evicts that address's oldest, whose consent page then answers
+  "Sign-in not found") and the browser always goes to
+  `/xenon/oauth/consent/<id>`: the
   dashboard cookie is SameSite=Strict, so the agent's navigation carries none,
   and the page's own fetches do.
 - Consent (`/oauth/consent/:id`, after CSRF and the login, a `user-session`
@@ -2510,12 +2527,22 @@ run `http://lab-mac:4723`), with the SDK's own rate limiters off.
 - Tokens: the access token is the `xenon-mcp` RS256 JWT, an hour
   (`OAUTH_ACCESS_TOKEN_TTL_SEC`), `scope` = the grant's MCP scopes cut to the
   user's role now (`scopesForRole`, every exchange and refresh), and `gid`.
+  Never flat `admin` or `roles: ['admin']` (`grantForRole` passes
+  `resolveMcpGrant` `neverAdmin`): an agent asks for every scope, and an
+  admin's agent would otherwise get REST's admin routes without the consent
+  page saying so. Its team visibility still follows the role. A grant-bound
+  credential (Bearer or session token with a `gid`) is never `overrideAdmin`
+  in per-command auth or `xenon_execute_script` (`commandCaller.ts`), a
+  SUPER_ADMIN's included. `resolveActor` and the lease override at session
+  create still read a SUPER_ADMIN's role. `POST /auth/token` keeps the
+  full-admin rule.
   The refresh token is opaque, rotated on each use (`GrantStore.rotate`), 30
   days unused or 90 in all (`XENON_MCP_REFRESH_IDLE_DAYS`,
   `XENON_MCP_REFRESH_MAX_DAYS`). `McpGrant`: the row with no `rotatedFromId`
-  is the grant (its id is `gid`); each rotation adds a spent row, kept
-  `SPENT_REFRESH_TOKEN_MEMORY_MS` (7 days), so a spent token presented again
-  within that revokes the grant. Every exchange and refresh looks the user
+  is the grant (its id is `gid`); each rotation adds a spent row, kept for
+  the idle window (`spentRefreshTokenMemoryMs`, `refreshIdleMs`), as long as
+  the token could have worked, so a spent token presented again any time it
+  could still have been valid revokes the grant. Every exchange and refresh looks the user
   up: not ACTIVE is `invalid_grant` (on a refresh the grant is revoked too).
 - Auth disabled: no sign-in routes, no metadata (`signInServed` falls through
   to the API's or Appium's 404); tools act as the synthetic SUPER_ADMIN.
@@ -2549,21 +2576,27 @@ user):
   or an admin stops it.
 - The grants routes (`/oauth/grants`, after the login) take any credential of
   the user, the agent's own token included, so an agent can revoke its user's
-  other agents. `DELETE /:id` of another user's grant, and the bulk
-  `DELETE /?userId=`, need an ADMIN or SUPER_ADMIN holding the `admin` scope
-  (`holdsAdminScope`); anything else is the unknown grant's `404`. A credential
-  with no user is `403`.
+  other agents. `DELETE /:id` of another user's grant needs an ADMIN or
+  SUPER_ADMIN holding the `admin` scope (`holdsAdminScope`), else it is the
+  unknown grant's `404`. The bulk `DELETE /?userId=` is `roleGuard`'s `403
+  requires role >= ADMIN` for a non-admin and `scopeGuard`'s `403
+  insufficient scope` for an admin without the scope, an admin's agent
+  included. A credential with no user is `403`.
 
 **Dashboard.** "AI agents" (`/agents`, `web/src/components/agents/`) for
-every signed-in user: per agent the command (`agentCommands.ts`: the agent's
-own where it has one, else the installer `npx @xenon-device-management/mcp
-add --hub <url> --client <name>`, and the installer for every agent on a
-plain-HTTP hub that isn't loopback) and Connected agents with Sign out. The
-consent page (`web/src/components/oauth/ConsentPage.tsx`) is a top-level
-route in `AuthShell`, not the dashboard's shell, behind `RouteGuard`; it
-shows the redirect URI's host, since the agent picks its own name, and
-navigates only to the `redirectTo` the server answers. The installer lives in
-`xenon-studio` and isn't published yet.
+every signed-in user: per agent what `website/docs/ai-agents.mdx` gives
+(`agentSetups` in `agentCommands.ts`: Claude Code, Codex and VS Code a
+command; Gemini CLI, Cursor and Windsurf the entry for their settings file;
+Claude Desktop a note, since its bridge comes with the installer; keep the
+two in step), a warning on a plain-HTTP hub that isn't loopback that some
+agents won't sign in over plain HTTP, and Connected agents with Sign out
+(confirmed in `ui/Modal`). The consent page
+(`web/src/components/oauth/ConsentPage.tsx`) is a top-level route in
+`AuthShell`, not the dashboard's shell, behind `RouteGuard`; it shows the
+redirect URI's host, since the agent picks its own name, and navigates only
+to the `redirectTo` the server answers. The installer
+(`@xenon-device-management/mcp`) lives in `xenon-studio` and isn't published
+yet, so nothing names it on screen.
 
 ### Identity & Manual Locks
 
@@ -3974,11 +4007,12 @@ manager reaps `Device` rows for unattached hardware (`removeStaleDevices`), so a
 seeded row is deleted before the page loads. Run it with `npm run test:viewport`
 against a running server (auth disabled).
 
-Coverage boundary — all 21 routes in the matrix are now **hermetic**. The 15
+Coverage boundary — all 22 routes in the matrix are now **hermetic**, and so
+is the consent page tested beside them. The 16
 data-heavy routes (overview, devices, devices?view=table, recordings,
 recordings/:groupId, builds, builds/:buildId, a failed and healed session's
-page, apps, selector-health, selector-health with its panel open, settings/teams,
-settings/users, settings/api-keys, settings/notifications)
+page, apps, selector-health, selector-health with its panel open, AI agents,
+settings/teams, settings/users, settings/api-keys, settings/notifications)
 route-mock their data endpoints via `ROUTE_DATA_MOCKS` with deliberately
 wide/hostile payloads — multiple rows plus a >100-char session subtitle, an
 >80-char selector XPath, a long bundle id, and long team/user names/emails — and
@@ -4000,7 +4034,8 @@ for them, and they have no entry in either map.
 
 One dependency still passes through to the live server unmocked: `AuthProvider`
 (mounted app-wide, so every route pays this on mount) calls `GET
-/xenon/api/auth/me`. It isn't hermetic in the literal sense, but it's stable —
+/xenon/api/auth/me`, except on AI agents and the consent page, which mock it
+as a signed-in user. It isn't hermetic in the literal sense, but it's stable —
 with auth disabled the server always returns the same synthetic
 `SUPER_ADMIN`/`auth-disabled` identity regardless of DB state — and no route
 gates its row rendering on `me`, so it doesn't threaten the vacuous-pass

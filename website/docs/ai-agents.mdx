@@ -8,7 +8,7 @@ import TabItem from '@theme/TabItem';
 
 An AI coding agent, such as Claude Code, Codex, Cursor, VS Code's Copilot or Gemini CLI, can test on your lab's phones. It does this through **MCP**, the protocol agents use to call tools. The Xenon hub serves MCP itself, at `/xenon/mcp`: you add that address to your agent, the agent signs in through your browser, and it gets Xenon's lab tools. It can list the phones you may use, lease one, start an Appium session on it as you, read Selector Health and record the screen.
 
-Xenon's tools don't tap or type. For that, pair Xenon with [`appium-mcp`](#pair-with-appium-mcp), which drives the phone; Xenon gives it the lab.
+Xenon's tools don't start your app or drive a session by themselves. For that, pair Xenon with [`appium-mcp`](#pair-with-appium-mcp), which drives the phone; Xenon gives it the lab. On a session `appium-mcp` started, `xenon_execute_script` runs Xenon's own commands, such as tapping by text or icon.
 
 :::note[Xenon Studio]
 Xenon Studio, the IDE extension made for Xenon, isn't publicly available yet. Its lab tools used to need a gateway deployed beside the hub. The hub now serves them itself, with the same names and arguments, so prompts and skills written for Studio keep working, in any agent.
@@ -97,8 +97,10 @@ These agents change their commands and config files from time to time. If yours 
 
 The first time the agent calls a Xenon tool, it opens your browser to sign in. Ask it something like "list the Xenon phones I can use" to check.
 
+The **AI agents** page gives the same commands and config entries as above, with your lab's address filled in. On a lab on plain HTTP on another computer, it also warns that some agents won't sign in over plain HTTP (see [A lab on plain HTTP](#a-lab-on-plain-http)).
+
 :::note[The installer]
-For Gemini CLI, Cursor, Windsurf and Claude Desktop, and for every agent when the lab is on plain HTTP, the **AI agents** page shows a command that runs Xenon's installer: `npx @xenon-device-management/mcp add --hub <your hub> --client <agent>`. The installer is a separate package, from Xenon Studio, and isn't on npm yet. Until it is, add the agent with its own command or config file, as above.
+Xenon's installer, a separate package from Xenon Studio, will add the lab to any of these agents, Claude Desktop included, and connect an agent that won't sign in over plain HTTP to a lab on another computer. It isn't on npm yet. Until it is, add the agent with its own command or config file, as above.
 :::
 
 ## One phone on your desk
@@ -130,23 +132,25 @@ What the agent then holds:
 
 - **An access token for an hour**, which it renews by itself.
 - **A refresh token**, which changes every time the agent renews. It stops working after 30 days unused, or 90 days after you allowed the agent, whichever comes first; the agent then asks you to sign in again. A hub admin can change both with `XENON_MCP_REFRESH_IDLE_DAYS` and `XENON_MCP_REFRESH_MAX_DAYS`.
-- If a refresh token is used a second time within a week of being replaced, as a stolen copy would be, that sign-in is revoked.
+- If a refresh token is used a second time, as a stolen copy would be, that sign-in is revoked. This holds for as long as the old token could still have worked: 30 days by default (`XENON_MCP_REFRESH_IDLE_DAYS`).
 
 The agent can do what your account can, as far as the scopes you allowed go: the same teams' phones, the same ownership rules, the same answers REST gives you. Xenon checks your account on every renewal and every call, so a user set to Inactive or deleted is refused at once, and their agents are signed out.
+
+An admin's agent gets no admin rights. It sees every team's phones, as its admin does, but it can't manage users, API keys, teams or settings, sign out other users' agents, or run Xenon's commands on another user's session. Do those in the dashboard, or with an API key that has the `admin` scope.
 
 ### Behind a reverse proxy
 
 The hub names itself to agents by `XENON_PUBLIC_URL` when it is set, else by the address the request came to. Behind a reverse proxy, set `XENON_PUBLIC_URL` to the address agents use, or set `trustProxy` so the hub reads the forwarded host and scheme.
 
-Sign-in has limits per caller address: 20 agent registrations an hour, 100 sign-in starts and 50 token requests every 15 minutes, and 10 sign-ins waiting for an answer at once. The address is Express's `req.ip`, read through `trustProxy`:
+Sign-in has limits per caller address: 20 agent registrations an hour, 100 sign-in starts and 50 token requests every 15 minutes, and 10 sign-ins waiting for an answer at once. An eleventh pushes out that address's oldest waiting sign-in, whose page then says the sign-in wasn't found. The address is Express's `req.ip`, read through `trustProxy`:
 
-- **Without `trustProxy`** behind a proxy, every request comes from the proxy's address, so the whole lab shares one set of limits: ten people starting a sign-in at once fill the waiting list.
+- **Without `trustProxy`** behind a proxy, every request comes from the proxy's address, so the whole lab shares one set of limits: when eleven people start a sign-in at once, the first one's is pushed out.
 - **`trustProxy: true`** trusts the left-most `X-Forwarded-For` entry, which a caller that reaches the hub directly, around the proxy, writes for itself. Such a caller can then pick a new address for every request and is never limited.
 - **Set a hop count or addresses** instead: `1` for one proxy in front, or the proxy's own addresses, such as `loopback` or `10.0.0.5`.
 
 ## Sign an agent out
 
-On the **AI agents** page, **Connected agents** lists the agents you have signed in, what each may do and when it was last used. **Sign out** revokes one. Through the API, `GET /xenon/api/oauth/grants` lists them and `DELETE /xenon/api/oauth/grants/<id>` revokes one; an admin with the `admin` scope may revoke anyone's, and `DELETE /xenon/api/oauth/grants?userId=<id>` revokes all of a user's.
+On the **AI agents** page, **Connected agents** lists the agents you have signed in, what each may do and when it was last used. **Sign out** revokes one. Through the API, `GET /xenon/api/oauth/grants` lists them and `DELETE /xenon/api/oauth/grants/<id>` revokes one; an admin may revoke anyone's, and `DELETE /xenon/api/oauth/grants?userId=<id>` revokes all of a user's, signed in to the dashboard or with an API key that has the `admin` scope. An agent can't do either for another user's agents, an admin's agent included: its sign-in never has the `admin` scope.
 
 A sign-out takes effect at once:
 
@@ -201,7 +205,7 @@ Each tool needs one MCP scope. A tool outside the scopes the agent holds isn't l
 | `xenon:recordings` | `xenon_start_recording`, `xenon_stop_recording` | Start and stop [recordings](./recordings.md) | `devices` or `admin` |
 | `xenon:execute` | `xenon_execute_script` | Run Xenon's own commands on a session you own: tap by text or icon, list and check what's on screen, wait settings, network mocks and the session's captured traffic, the session's name, status and tags | `sessions` or `admin` |
 
-- **Through the browser,** the agent asks for scopes and gets those your role allows. Every role allows all six, so the consent page lists what the agent asked for. An agent that asks for none gets `appium:use` and `xenon:devices:read`.
+- **Through the browser,** the agent asks for scopes and gets those your role allows. Every role allows all six, so the consent page lists what the agent asked for. An agent that asks for none gets `appium:use` and `xenon:devices:read`. None of them is an admin right, for an admin's agent too.
 - **With an `xenon-mcp` token** from `POST /auth/token`, the agent has the token's scopes. With no `scopes` in the request, the token gets `appium:use` and `xenon:devices:read`, as far as your credential allows them. `xenon:execute` is given only when asked for.
 - **`xenon:execute` sees what the session sees.** Its taps and screen checks send a screenshot to the lab's AI provider, and it can read what the session's network capture recorded, sign-in headers and cookies included. Give it only to an agent you would let see those.
 
@@ -218,7 +222,7 @@ Each tool needs one MCP scope. A tool outside the scopes the agent holds isn't l
 The session then runs on the lab like any test of yours: its commands go through the hub, so autowait, self-healing, the command log, video and device logs apply, and it appears on the **Sessions** page under your name. Team rules and leases apply to it as to any session.
 
 - **With per-command checks on** (`XENON_REQUIRE_COMMAND_AUTH`), every command needs a credential, and `appium-mcp` sends none of its own after the create. So `remoteServerUrl` carries the session token as its password (`https://xenon-session:<token>@xenon.example.com/...`), which the client sends with every command. Without the checks, the URL carries none.
-- **The session token lasts** as long as an `xenon-mcp` token (`XENON_MCP_TOKEN_TTL_SEC`, 24 hours by default), but never longer than the credential that asked for it. Under a browser sign-in, that is the rest of the access token's hour. With per-command checks on, a session that runs longer is refused after that, so ask `xenon_session_capabilities` again for each new session.
+- **The session token lasts** as long as an `xenon-mcp` token (`XENON_MCP_TOKEN_TTL_SEC`, 24 hours by default), and the answer's `expiresAt` says when it ends. Under a browser sign-in it lasts all of that, not just the access token's hour: it belongs to the sign-in, so signing the agent out stops it at once. Asked for with an API key or token that ends sooner, it ends with that. With per-command checks on, a session that runs longer is refused after that, so ask `xenon_session_capabilities` again for each new session.
 
 ## Tools
 
@@ -260,9 +264,17 @@ Errors: `not_found` (no such phone you may use), `ambiguous_phone` (two phones s
 
 `xenon:devices:lock`. Gives a lease back: `{ udid, lockId, leaseToken }`. Answers `{ released: true }`.
 
+```json
+{ "udid": "R5CT1234ABC", "lockId": "lease_7f3a…", "leaseToken": "…" }
+```
+
 ### `xenon_extend_device`
 
 `xenon:devices:lock`. Makes a lease last longer: `{ lockId, leaseToken, durationMs? }`. It then lasts at least `durationMs` from now (15 minutes when left out), never less than it already does, and at most 24 hours after it was taken. Answers `{ lockId, expiresAt }`.
+
+```json
+{ "lockId": "lease_7f3a…", "leaseToken": "…", "durationMs": 3600000 }
+```
 
 ### `xenon_session_capabilities`
 
@@ -272,15 +284,23 @@ Errors: `not_found` (no such phone you may use), `ambiguous_phone` (two phones s
 { "lockId": "lease_7f3a…", "leaseToken": "…" }
 ```
 
-Answers `{ remoteServerUrl, capabilities }`, `capabilities` being `{ alwaysMatch, firstMatch }` with `xe:options.sessionToken`, and with a lease its `leaseId`, `leaseToken` and `leaseMember`. A lease still waiting for its phone is `lease_waiting`.
+Answers `{ remoteServerUrl, capabilities, expiresAt }`, `capabilities` being `{ alwaysMatch, firstMatch }` with `xe:options.sessionToken`, and with a lease its `leaseId`, `leaseToken` and `leaseMember`; `expiresAt` is when the session token ends, in epoch milliseconds. A lease still waiting for its phone is `lease_waiting`.
 
 ### `xenon_selector_health`
 
 `xenon:analytics:read`. The selectors your tests could only find with healing ([Selector Health](./selector-health.md)): optional `selector` (exact) and `limit`. `appId` is accepted and ignored. Each is `{ selector, strategy, healCount, topTier, suggestedRewrite?, state?, lastHealedAt?, etalonAge? }`, `topTier` being a tier's name such as `Fuzzy XML` or `LLM`.
 
+```json
+{ "selector": "//android.widget.Button[@text='Pay']", "limit": 10 }
+```
+
 ### `xenon_healing_events`
 
 `xenon:analytics:read`. A session's heals: `{ sessionId }`. Each is `{ selector, tier, healedSelector?, confidence, isSuccess, createdAt }`. A session that doesn't exist, or one you may not see, gets REST's not-found answer; Xenon Studio's tool answered such a session with an empty list, which reads like a run with no heals.
+
+```json
+{ "sessionId": "3f6c…" }
+```
 
 ### `xenon_start_recording`
 
@@ -294,15 +314,19 @@ Answers `{ remoteServerUrl, capabilities }`, `capabilities` being `{ alwaysMatch
 
 `xenon:recordings`. Stops a recording: `{ groupId }`. Answers `{ proofBundleUrl }`, where the recording's ZIP is on this hub. The URL isn't signed: fetch it with your own credentials.
 
+```json
+{ "groupId": "8d21…" }
+```
+
 ### `xenon_execute_script`
 
-`xenon:execute`. Runs one of Xenon's own commands (`xe:` or `xenon:` scripts, see [Xenon commands](./execute-commands.md)) on a session you own: `{ sessionId, script, args? }`. Answers `{ script, value }`. A session you don't own is refused as one that doesn't exist.
+`xenon:execute`. Runs one of Xenon's own commands (`xe:` or `xenon:` scripts, see [Xenon commands](./execute-commands.md)) on a session you own: `{ sessionId, script, args? }`. Answers `{ script, value }`. A session you don't own is refused as one that doesn't exist. Only Xenon's own commands run, named alone after the prefix: any other script, such as `xe: document.title` (JavaScript in a web view) or an unknown name, is refused with `bad_request` and never reaches the phone.
 
 ```json
 { "sessionId": "3f6c…", "script": "xe:smartTap", "args": { "text": "Sign in" } }
 ```
 
-Xenon answers these commands itself, before the session's command log, so they don't appear among the session's commands on the dashboard.
+For a session on the hub's own phones, Xenon answers these commands itself, before the session's command log, so they don't appear among the session's commands on the dashboard. For a session on a node's phone, the hub records them with the session's other commands when its `enableDashboard` is on.
 
 ## A lab on plain HTTP
 
@@ -313,11 +337,15 @@ Many labs run at an address such as `http://lab-mac:4723`. The hub serves sign-i
 
 Put the hub behind HTTPS where you can: a reverse proxy with a certificate, `XENON_PUBLIC_URL` set to its address, and `trustProxy` set for the proxy ([Behind a reverse proxy](#behind-a-reverse-proxy)). Otherwise, give that agent an API credential in a header ([CI and other agents without a browser](#ci-and-other-agents-without-a-browser)).
 
+## A lab on a closed network
+
+Some agents name themselves by a URL instead of registering with the hub: the hub then fetches a small document about the agent from that URL, on the internet. A hub that can't reach the internet can't fetch it, and the sign-in fails. Set `XENON_MCP_CLIENT_DOCUMENTS=off` on such a hub: it then tells agents it doesn't read those documents, an agent registers with the hub instead, and a sign-in that names an agent by a URL is refused without a fetch.
+
 ## Things to know
 
 - **The first session on a phone is slower,** while the driver sets itself up on it. A real phone can take 30 to 90 seconds, longer than some agents wait for a tool call by default. If the agent reports a timeout, raise its tool-call timeout to two or three minutes, and check the **Devices** page: the session may have started anyway.
 - **What the agent does is on record like any test.** With `enableDashboard` on, its sessions appear on the **Sessions** page under your name, with their commands, video and device logs.
 - **Each tool call is logged** in the hub's event log (`mcp_tool_call`: the user, the tool, how it went and how long it took; never its arguments or answer) and is a span when the hub exports traces. An MCP server of your own can also report its tool calls to `POST /xenon/api/audit/events`, with a key that has the `admin` scope.
 - **Where it is served.** A hub or a standalone server serves `/xenon/mcp`, whether or not `enableDashboard` is on. A node doesn't: its phones are reached through its hub. With auth disabled there is no sign-in, and the tools act as the synthetic super admin, as REST does.
-- **What clients can check.** `GET /xenon/api/capabilities` reports `features.mcpServer` (`{ path, url, oauth, contractVersion, tools }`) on a server that serves MCP, and `features.mcpScopedTokens` on one that takes the MCP scopes above. `/xenon/api/sdk/version` lists `mcp-server`.
+- **What clients can check.** `GET /xenon/api/capabilities` reports `features.mcpServer` (`{ path, url, oauth, contractVersion, tools }`, `oauth` being false with auth disabled) on a server that serves MCP, and `features.mcpScopedTokens` on one that takes the MCP scopes above. `/xenon/api/sdk/version` lists `mcp-server`.
 - **How it answers.** Each call is a POST answered with JSON, with no MCP session kept on the hub, so a restart loses nothing. GET and DELETE answer `405`.

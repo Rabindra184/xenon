@@ -1730,12 +1730,15 @@ paths:
         Redirect URIs (at least one, at most 10): loopback (`http://127.0.0.1`, `http://[::1]`,
         `http://localhost`, any port), any `https` URL, or an app's own scheme
         (`cursor://...`). No fragment and no user name. An agent may instead use an `https` URL
-        as its `client_id` (a client ID metadata document) and skip registering.
+        as its `client_id` (a client ID metadata document) and skip registering, unless the hub
+        has `XENON_MCP_CLIENT_DOCUMENTS=off` (a lab that can't reach the internet), which its
+        metadata then says.
 
         **Limits.** 20 requests an hour from one address, counted as `trustProxy` reads it (an
         IPv6 address by its /64), failed ones included; past that `429`. Past 20 registrations
-        an hour from one address, or with 500 agents each signed in, a registration is
-        `400 too_many_requests`. An agent unused for 30 days is forgotten.
+        an hour from one address, or with 500 agents each signed in or registered in the last 10
+        minutes, a registration is `400 too_many_requests`. An agent unused for 30 days is
+        forgotten.
 
         Served on a hub or a standalone server with sign-in on: on a node, or with auth disabled,
         it answers `404`.
@@ -1888,8 +1891,10 @@ paths:
         `resource`, when sent, must be this hub's MCP endpoint (with or without a trailing slash),
         else `invalid_target`, before the code or refresh token is used. The access token is the
         `xenon-mcp` bearer token `/mcp` and the API take, for one hour, with the granted scopes
-        cut to the user's role, which is looked up at every exchange. A refresh token lasts 30
-        days unused and 90 days in all.
+        cut to the user's role, which is looked up at every exchange. It never carries the
+        `admin` scope, an admin's included: an agent signed in through the browser has no admin
+        rights. A refresh token lasts 30 days unused and 90 days in all; one presented again after
+        its use is remembered as long as it could have worked (the 30 days unused).
 
         **Limit.** 50 requests per 15 minutes from one address; past that `429`.
       tags:
@@ -2126,7 +2131,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          description: A credential that names no user, such as a hub's token for its node.
+          description: A credential that names no user.
           content:
             application/json:
               schema:
@@ -2188,20 +2193,20 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           description: |
-            The caller isn't an admin holding the `admin` scope, or its credential names no user
-            (`Agent sign-ins belong to a user`).
+            The caller isn't an admin (`requires role >= ADMIN`), or is one without the `admin`
+            scope (`insufficient scope`), as an admin's agent signed in through the browser always
+            is.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               examples:
+                role:
+                  value:
+                    error: requires role >= ADMIN
                 scope:
                   value:
                     error: insufficient scope
-                noUser:
-                  value:
-                    error: forbidden
-                    message: Agent sign-ins belong to a user
         '404':
           description: Auth is disabled on this server, so it signs no agent in and serves no such route.
           content:
@@ -2260,7 +2265,7 @@ paths:
                 error: not_found
                 message: Agent sign-in not found
         '403':
-          description: A credential that names no user, such as a hub's token for its node.
+          description: A credential that names no user.
           content:
             application/json:
               schema:
