@@ -56,7 +56,8 @@ export function agentSetups(hubUrl: string): AgentSetup[] {
       client: 'codex',
       label: 'Codex',
       kind: 'command',
-      text: `codex mcp add xenon --url ${mcpUrl} && codex mcp login xenon`,
+      text: `codex mcp add xenon --url ${mcpUrl}`,
+      after: 'Codex opens this browser for you to sign in. If you close it first, run codex mcp login xenon.',
     },
     {
       client: 'gemini',

@@ -29,7 +29,10 @@ describe('agentSetups', () => {
     const byClient = Object.fromEntries(setups.map((a) => [a.client, a]));
     expect(byClient.codex).toMatchObject({
       kind: 'command',
-      text: `codex mcp add xenon --url ${MCP_URL} && codex mcp login xenon`,
+      // `codex mcp add` signs in by itself; a `codex mcp login` after it
+      // asked the person to sign in a second time.
+      text: `codex mcp add xenon --url ${MCP_URL}`,
+      after: expect.stringContaining('codex mcp login xenon'),
     });
     expect(byClient.vscode).toMatchObject({
       kind: 'command',
