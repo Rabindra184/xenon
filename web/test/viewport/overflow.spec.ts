@@ -1,18 +1,21 @@
 import { test, expect, Page } from '@playwright/test';
 
-// COVERAGE BOUNDARY: every route below is now hermetic. AI agents and the
-// consent page mock /auth/me as a signed-in user (see AGENTS_ROUTE). The 11 data routes
-// (overview, devices, builds, builds/:buildId, apps, selector-health,
-// selector-health with its panel open, teams, users, api-keys, notifications) have their
-// data endpoints route-mocked with deliberately WIDE/hostile payloads via
+// COVERAGE BOUNDARY: every route below is now hermetic, and so is the consent
+// page tested after them. AI agents and the consent page mock /auth/me as a
+// signed-in user (see AGENTS_ROUTE). The 16 data routes (overview, devices,
+// devices?view=table, recordings, recordings/:groupId, builds, builds/:buildId,
+// a session's page, apps, selector-health, selector-health with its panel
+// open, AI agents, teams, users, api-keys, notifications) have their data
+// endpoints route-mocked with deliberately WIDE/hostile payloads via
 // ROUTE_DATA_MOCKS, and a per-route ROUTE_CONTENT_CHECKS assertion proves the
 // route's canonical wide content actually mounted (not an empty-state div) —
 // so the overflow scan below can no longer pass vacuously on a zero-row table.
 // The control route keeps its own dedicated device mock + 11-button toolbar
-// test (unchanged). The 3 static-form routes (maintenance, settings,
-// ai-settings) render a fixed layout independent of any list data — the
-// existing shell-nav check is already non-vacuous for them, so they have no
-// entry in either map and are covered by the shell check alone.
+// test (unchanged); the Logs tab and the chooser have their own mocks and
+// checks. The 3 static-form routes (maintenance, settings, ai-settings) render
+// a fixed layout independent of any list data — the existing shell-nav check
+// is already non-vacuous for them, so they have no entry in either map and are
+// covered by the shell check alone. 22 routes in all.
 
 // Real Android device JSON shape, per .superpowers/sdd/task-2-brief.md. Only the
 // fields the control page actually reads matter, but we keep the full shape so
@@ -1286,13 +1289,17 @@ const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
     await expect(page.locator('.webhook-row-card')).not.toHaveCount(0);
   },
 };
-// AI agents: a command per agent, every one carrying the long hub address, and
-// the connected agents' rows (not the "no agent yet" placeholder).
+// AI agents: a row per agent, each command or config entry carrying the long
+// hub address (Claude Desktop's row is a note), and the connected agents' rows
+// (not the "no agent yet" placeholder).
 ROUTE_CONTENT_CHECKS[AGENTS_ROUTE] = async (page) => {
   await expect(page.locator('ul[aria-labelledby="agent-commands"] > li')).toHaveCount(7);
   await expect(page.locator('ul[aria-labelledby="agent-commands"] code').first()).toContainText(
     LONG_HUB,
   );
+  await expect(
+    page.locator('ul[aria-labelledby="agent-commands"] code', { hasText: LONG_HUB }),
+  ).toHaveCount(6);
   await expect(page.locator('table[aria-labelledby="connected-agents"] tbody tr')).toHaveCount(2);
 };
 // The chooser: one link per phone of the udid, and no phone opened.

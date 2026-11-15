@@ -79,14 +79,17 @@ describe('AgentsPage', () => {
     );
     writeText = vi.fn(async () => {}) as unknown as (text: string) => Promise<void>;
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    // Sign out asks in the dashboard's own dialog, never the browser's.
+    vi.spyOn(window, 'confirm').mockImplementation(() => {
+      throw new Error('window.confirm was called');
+    });
   });
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
-  it("AgentsPage shows one copyable command per agent with this hub's URL", async () => {
+  it("AgentsPage shows each agent's command or config entry with this hub's URL", async () => {
     renderPage();
     const commands = await screen.findByRole('list', { name: /add xenon to your agent/i });
     const rows = within(commands).getAllByRole('listitem');
@@ -99,12 +102,20 @@ describe('AgentsPage', () => {
       'Windsurf',
       'Claude Desktop',
     ]);
-    for (const row of rows) {
+    // Every agent but Claude Desktop, whose bridge isn't out yet, has something to copy.
+    for (const row of rows.slice(0, 6)) {
       expect(within(row).getByRole('button', { name: /^copy/i })).toBeInTheDocument();
     }
+    expect(within(rows[6]).queryByRole('button')).not.toBeInTheDocument();
+    expect(rows[6]).toHaveTextContent(/isn't available yet/);
     expect(
       screen.getByText('claude mcp add --transport http xenon https://xenon.example.com/xenon/mcp'),
     ).toBeInTheDocument();
+    // Cursor's is an entry for its settings file, which the row names.
+    expect(rows[3]).toHaveTextContent('~/.cursor/mcp.json');
+    expect(rows[3]).toHaveTextContent('"url": "https://xenon.example.com/xenon/mcp"');
+    // Nothing names Xenon's installer, which isn't published.
+    expect(commands.textContent).not.toMatch(/npx|@xenon-device-management/);
 
     userEvent.click(screen.getByRole('button', { name: 'Copy the Claude Code command' }));
     await waitFor(() =>
@@ -117,7 +128,7 @@ describe('AgentsPage', () => {
     ).toHaveTextContent('Copied');
   });
 
-  it('gives every agent the installer on a plain-HTTP lab, and says why', async () => {
+  it('on a plain-HTTP lab on another computer, warns that some agents need HTTPS', async () => {
     answers['GET /xenon/api/capabilities'] = {
       status: 200,
       body: {
@@ -128,11 +139,25 @@ describe('AgentsPage', () => {
     const commands = await screen.findByRole('list', { name: /add xenon to your agent/i });
     expect(
       within(commands).getByText(
-        'npx @xenon-device-management/mcp add --hub http://lab-mac:4723 --client claude-code',
+        'claude mcp add --transport http xenon http://lab-mac:4723/xenon/mcp',
       ),
     ).toBeInTheDocument();
-    expect(within(commands).queryByText(/^claude mcp add/)).not.toBeInTheDocument();
-    expect(screen.getByText(/plain http/i)).toBeInTheDocument();
+    expect(commands.textContent).not.toMatch(/npx|@xenon-device-management/);
+    const note = screen.getByRole('note');
+    expect(note).toHaveTextContent(/plain HTTP/);
+    expect(note).toHaveTextContent(/HTTPS/);
+  });
+
+  it('gives no warning for a lab on this computer, where agents accept plain HTTP', async () => {
+    answers['GET /xenon/api/capabilities'] = {
+      status: 200,
+      body: {
+        features: { mcpServer: { path: '/xenon/mcp', url: 'http://localhost:4723/xenon/mcp' } },
+      },
+    };
+    renderPage();
+    await screen.findByRole('list', { name: /add xenon to your agent/i });
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
   });
 
   it('AgentsPage lists my connected agents and Revoke calls DELETE /oauth/grants/:id', async () => {
@@ -147,9 +172,14 @@ describe('AgentsPage', () => {
 
     answers['GET /xenon/api/oauth/grants'] = { status: 200, body: [GRANTS[1]] };
     userEvent.click(within(rows[0]).getByRole('button', { name: 'Sign out Claude Code' }));
+    // The dashboard's own dialog asks first; nothing is sent until it is answered.
+    const dialog = await screen.findByRole('dialog', { name: 'Sign out Claude Code?' });
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
+    userEvent.click(within(dialog).getByRole('button', { name: 'Sign out' }));
     await waitFor(() =>
       expect(calls).toContainEqual({ method: 'DELETE', url: '/xenon/api/oauth/grants/g1' }),
     );
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     await waitFor(() => {
       const left = within(screen.getByRole('table', { name: /connected agents/i }))
         .getAllByRole('row')
@@ -159,12 +189,25 @@ describe('AgentsPage', () => {
     });
   });
 
-  it("doesn't sign an agent out when the confirmation is cancelled", async () => {
-    (window.confirm as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false);
+  it("doesn't sign an agent out when the dialog is cancelled", async () => {
     renderPage();
     const table = await screen.findByRole('table', { name: /connected agents/i });
     userEvent.click(within(table).getByRole('button', { name: 'Sign out Claude Code' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Sign out Claude Code?' });
+    userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
+  });
+
+  it('says when a sign-out fails, and closes the dialog', async () => {
+    answers['DELETE /xenon/api/oauth/grants/g1'] = { status: 500, body: { error: 'internal' } };
+    renderPage();
+    const table = await screen.findByRole('table', { name: /connected agents/i });
+    userEvent.click(within(table).getByRole('button', { name: 'Sign out Claude Code' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Sign out Claude Code?' });
+    userEvent.click(within(dialog).getByRole('button', { name: 'Sign out' }));
+    expect(await screen.findByText(/couldn't sign it out/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('says when no agent is signed in yet', async () => {

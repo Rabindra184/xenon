@@ -1,16 +1,17 @@
 import * as React from 'react';
 import { useCallback, useEffect, useState } from 'react';
-import { Bot, Check, Copy, LogOut, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Bot, Check, Copy, LogOut, RefreshCw } from 'lucide-react';
 import XenonApiService, { AgentSignIn } from '../../api-service';
 import { PageHeader } from '../ui/page-header';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/button';
+import { Modal } from '../ui/Modal';
 import { Table, THead, TBody, TR, TH, TD } from '../ui/Table';
 import { useToast } from '../ui/toast';
 import { useAuth } from '../../auth/auth-context';
 import { formatDateTime, formatRelative } from '../../utils/time';
 import { scopeWords } from '../oauth/scopeWords';
-import { agentCommands, isPlainHttpHub } from './agentCommands';
+import { AgentSetup, agentSetups, isPlainHttpHub } from './agentCommands';
 
 /** The connected agents: none to list with sign-in off, or the server didn't answer. */
 type SignInList = { kind: 'off' } | { kind: 'failed' } | { kind: 'list'; items: AgentSignIn[] };
@@ -45,6 +46,8 @@ export default function AgentsPage() {
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [copied, setCopied] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState<string | null>(null);
+  /** The sign-in whose Sign out is being confirmed. */
+  const [confirming, setConfirming] = useState<AgentSignIn | null>(null);
 
   const { me } = useAuth();
   const signInOff = me?.authDisabled === true;
@@ -82,13 +85,14 @@ export default function AgentsPage() {
   }
 
   async function signOut(signIn: AgentSignIn) {
-    if (!window.confirm(`Sign out ${signIn.clientName}? It stops working at once.`)) return;
     setSigningOut(signIn.id);
     try {
       await XenonApiService.revokeAgentSignIn(signIn.id);
+      setConfirming(null);
       toast(`${signIn.clientName} is signed out`, 'success');
       await read();
     } catch (e) {
+      setConfirming(null);
       toast(`Couldn't sign it out: ${(e as Error).message}`, 'error');
     } finally {
       setSigningOut(null);
@@ -100,7 +104,7 @@ export default function AgentsPage() {
       <PageHeader
         icon={Bot}
         title="AI agents"
-        subtitle="Add this lab to your coding agent. It signs in with your account in this browser, and can do what your account can."
+        subtitle="Add this lab to your coding agent. It signs in with your account in this browser and uses the lab as you, without admin rights."
       />
       <div className="px-6 py-6 max-w-5xl space-y-6">
         {load.kind === 'loading' && (
@@ -134,12 +138,43 @@ export default function AgentsPage() {
             <SignIns
               signIns={load.signIns}
               signingOut={signingOut}
-              onSignOut={signOut}
+              onSignOut={setConfirming}
               onRetry={() => void read()}
             />
           </>
         )}
       </div>
+      <Modal
+        open={confirming !== null}
+        title={confirming ? `Sign out ${confirming.clientName}?` : ''}
+        onClose={() => {
+          // The request can't be taken back once it is sent.
+          if (signingOut) return;
+          setConfirming(null);
+        }}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setConfirming(null)}
+              disabled={signingOut !== null}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => confirming && void signOut(confirming)}
+              disabled={signingOut !== null}
+            >
+              {signingOut ? 'Signing out…' : 'Sign out'}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-[var(--text-muted)]">
+          It stops working at once, and the phones it leased are given back.
+        </p>
+      </Modal>
     </div>
   );
 }
@@ -157,37 +192,79 @@ function Commands({
   return (
     <Card header={<h2 id="agent-commands">Add Xenon to your agent</h2>}>
       <p className="mb-4 text-sm text-[var(--text-muted)]">
-        Run the command for your agent on your computer. The first time the agent uses Xenon, it
-        opens this browser for you to allow it.
-        {plainHttp &&
-          " This lab is on plain HTTP, which some agents won't sign in over, so every agent connects through Xenon's installer, which signs in from your computer."}
+        Run the command for your agent on your computer, or add the entry to its settings file. The
+        first time the agent uses Xenon, it opens this browser for you to allow it.
       </p>
+      {plainHttp && (
+        <p role="note" className="mb-4 flex items-start gap-2 text-sm text-[var(--text)]">
+          <AlertTriangle
+            size={16}
+            aria-hidden="true"
+            className="mt-0.5 shrink-0 text-[var(--color-warning)]"
+          />
+          <span>
+            This lab is on plain HTTP. Some agents won&apos;t sign in to a lab on another computer
+            over plain HTTP. Ask your lab admin to put it behind HTTPS.
+          </span>
+        </p>
+      )}
       <ul aria-labelledby="agent-commands" className="space-y-4">
-        {agentCommands(hub, plainHttp).map(({ client, label, command }) => (
-          <li key={client}>
-            <div className="mb-1.5 flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-[var(--text)]">{label}</h3>
-              <Button
-                variant="secondary"
-                size="sm"
-                aria-label={`Copy the ${label} command`}
-                onClick={() => onCopy(client, command)}
-              >
-                {copied === client ? (
-                  <Check size={14} aria-hidden="true" />
-                ) : (
-                  <Copy size={14} aria-hidden="true" />
-                )}
-                {copied === client ? 'Copied' : 'Copy'}
-              </Button>
-            </div>
-            <code className="block whitespace-pre-wrap break-all rounded-md border border-[var(--border)] bg-[var(--surface-sunken)] px-3 py-2 font-mono text-mono-data text-[var(--text)]">
-              {command}
-            </code>
+        {agentSetups(hub).map((setup) => (
+          <li key={setup.client}>
+            <Setup setup={setup} copied={copied === setup.client} onCopy={onCopy} />
           </li>
         ))}
       </ul>
     </Card>
+  );
+}
+
+function Setup({
+  setup,
+  copied,
+  onCopy,
+}: {
+  setup: AgentSetup;
+  copied: boolean;
+  onCopy: (client: string, command: string) => void;
+}) {
+  const { client, label } = setup;
+  return (
+    <>
+      <div className="mb-1.5 flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-[var(--text)]">{label}</h3>
+        {setup.kind !== 'unavailable' && (
+          <Button
+            variant="secondary"
+            size="sm"
+            aria-label={`Copy the ${label} ${setup.kind === 'config' ? 'entry' : 'command'}`}
+            onClick={() => onCopy(client, setup.text)}
+          >
+            {copied ? (
+              <Check size={14} aria-hidden="true" />
+            ) : (
+              <Copy size={14} aria-hidden="true" />
+            )}
+            {copied ? 'Copied' : 'Copy'}
+          </Button>
+        )}
+      </div>
+      {setup.kind === 'unavailable' ? (
+        <p className="text-sm text-[var(--text-muted)]">{setup.note}</p>
+      ) : (
+        <>
+          {setup.kind === 'config' && (
+            <p className="mb-1.5 text-sm text-[var(--text-muted)]">
+              Add this to <code className="font-mono text-mono-data">{setup.file}</code>:
+            </p>
+          )}
+          <code className="block whitespace-pre-wrap break-all rounded-md border border-[var(--border)] bg-[var(--surface-sunken)] px-3 py-2 font-mono text-mono-data text-[var(--text)]">
+            {setup.text}
+          </code>
+          {setup.after && <p className="mt-1.5 text-sm text-[var(--text-muted)]">{setup.after}</p>}
+        </>
+      )}
+    </>
   );
 }
 
