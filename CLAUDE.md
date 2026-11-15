@@ -2508,6 +2508,35 @@ run `http://lab-mac:4723`), with the SDK's own rate limiters off.
   (`clientDocumentsAccepted`, read per call) is for a lab that can't reach
   the internet: the metadata says `client_id_metadata_document_supported:
   false`, and a URL `client_id` is `invalid_client` without a fetch.
+- Without the setting the hub falls back by itself.
+  - **What trips it:** a document refused for a network reason
+    (`NETWORK_REASONS`: `unresolvable`, `private_address`, `unreachable`,
+    `timeout`) notes the time (`noteUnreachableClientDocument`).
+  - **What it changes:** for an hour the metadata reads
+    `clientDocumentsOffered()`, false, so a new agent registers instead. Each
+    failure restarts the hour, the first logs one warning naming the setting,
+    and it is in memory, so a restart forgets it.
+  - **What it doesn't change:** the store still reads documents
+    (`clientDocumentsAccepted`, the switch alone). Anyone can trip the
+    fallback by naming a URL that doesn't resolve, and the store's path also
+    serves refresh: turning reading off would sign out every agent named by
+    a document.
+  - **Agents differ on a retry** (checked 2026-11-15 on a hub with no
+    internet). Claude Code saves its URL `client_id` before the browser
+    opens and retries with it whatever the metadata says, so it registers
+    only after `claude mcp logout <name>`. Codex reads the metadata again and
+    registers. The error page gives each its step (`knownAgentOf`).
+- Authorize errors are a page in a browser (`oauthErrorPage.ts`,
+  `readableErrorsForBrowsers`, first on the authorize route).
+  - **How:** it wraps `res.json`, so it covers `answerDirectly`, the
+    limiter's 429 and the SDK handler's own answers. When the request
+    prefers `text/html` it sends a standalone page with the status kept (and
+    `Retry-After`): no script, no link off the hub, `no-store`, no framing,
+    escaped text.
+  - **Who still gets JSON:** a client that asks for it, or says nothing. The
+    specs' requests send no Accept, so they read JSON.
+  - **The unreachable-document page** names the agent's next step by its URL
+    and the setting for admins.
 - Authorize: PKCE `S256` required, `resource` (missing is bound to this hub)
   must be this hub's MCP URL. Every bad parameter is answered to the browser
   directly (`answerDirectly`), never by a redirect to the agent: before

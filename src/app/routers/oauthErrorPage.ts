@@ -29,15 +29,54 @@ interface PageText {
   forAdmins?: string;
 }
 
-function textFor(status: number, error: string, description: string | undefined): PageText {
+type KnownAgent = 'claude-code' | 'codex';
+
+/**
+ * The agent a URL `client_id` names, for the steps the page gives. Only the
+ * URL is read, never fetched. Claude Code saves its URL `client_id` before
+ * the browser opens and goes back with it on a retry, whatever discovery
+ * says, so it has to be signed out of the hub first; Codex reads discovery
+ * again and registers (both checked on 2026-11-15).
+ */
+function knownAgentOf(clientId: string | undefined): KnownAgent | undefined {
+  if (!clientId) return undefined;
+  let url: URL;
+  try {
+    url = new URL(clientId);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== 'https:') return undefined;
+  if (url.host === 'claude.ai' && url.pathname.startsWith('/oauth/claude-code')) {
+    return 'claude-code';
+  }
+  if (url.host === 'chatgpt.com' && url.pathname.startsWith('/oauth/codex')) return 'codex';
+  return undefined;
+}
+
+const NEXT_STEP: Record<KnownAgent | 'other', string> = {
+  'claude-code':
+    'In Claude Code, cancel the waiting sign-in, then sign it out of this hub: run claude mcp logout xenon (with the name you gave the server), or open /mcp, choose the server and clear its authentication. Then sign in again: Claude Code now registers with the hub.',
+  codex:
+    'Cancel the waiting sign-in in Codex, then sign in again (codex mcp login xenon, with the name you gave the server): Codex now registers with the hub.',
+  other:
+    'Cancel the waiting sign-in in your agent and start it again. If it comes back to this page, sign the agent out of this hub first (its sign-out or clear-authentication command for MCP servers), then sign in again.',
+};
+
+function textFor(
+  status: number,
+  description: string | undefined,
+  clientId: string | undefined,
+): PageText {
   if (description === DOCUMENT_UNREACHABLE) {
     return {
       title: "Xenon couldn't read this agent's details",
       paragraphs: [
-        "This hub couldn't reach the internet to read the agent's details. It now asks agents to register with it instead, so start the sign-in again from your agent.",
+        "This hub couldn't fetch the agent's details from the internet, so it now asks agents to register with it instead.",
+        NEXT_STEP[knownAgentOf(clientId) ?? 'other'],
       ],
       forAdmins:
-        'For admins: on a network without internet access, set XENON_MCP_CLIENT_DOCUMENTS=off on the hub to make this permanent.',
+        'For admins: on a network without internet access, set XENON_MCP_CLIENT_DOCUMENTS=off on the hub, so agents register from their first sign-in.',
     };
   }
   if (status === 429) {
@@ -62,11 +101,12 @@ function textFor(status: number, error: string, description: string | undefined)
 export function signInErrorPage(
   status: number,
   body: { error?: unknown; error_description?: unknown },
+  clientId?: string,
 ): string {
   const error = typeof body.error === 'string' ? body.error : 'error';
   const description =
     typeof body.error_description === 'string' ? body.error_description : undefined;
-  const text = textFor(status, error, description);
+  const text = textFor(status, description, clientId);
   const paragraphs = text.paragraphs.map((p) => `<p>${escapeHtml(p)}</p>`).join('\n    ');
   const admins = text.forAdmins ? `\n    <p class="admins">${escapeHtml(text.forAdmins)}</p>` : '';
   return `<!doctype html>
@@ -116,7 +156,8 @@ export function readableErrorsForBrowsers(req: Request, res: Response, next: Nex
     if (!isError || req.accepts(['json', 'html']) !== 'html') return json(body);
     for (const [name, value] of Object.entries(PAGE_HEADERS)) res.setHeader(name, value);
     res.type('html');
-    return res.send(signInErrorPage(res.statusCode, body as { error?: unknown }));
+    const clientId = typeof req.query.client_id === 'string' ? req.query.client_id : undefined;
+    return res.send(signInErrorPage(res.statusCode, body as { error?: unknown }, clientId));
   }) as Response['json'];
   next();
 }

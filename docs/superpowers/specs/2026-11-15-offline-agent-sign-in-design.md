@@ -90,6 +90,13 @@ the person in the browser what happened.
     instead, so start the sign-in again from your agent." A line for
     admins names `XENON_MCP_CLIENT_DOCUMENTS=off`, which makes this
     permanent.
+  - **Per agent** *(added after the live check)*: Claude Code saves its URL
+    `client_id` before the browser opens and retries with it, so the page
+    tells it to run `claude mcp logout <name>` (or clear its authentication
+    in `/mcp`) first. Codex reads discovery again and registers, so it is
+    told only to sign in again. Any other agent is told to sign out first if
+    it comes back to the page. The agent is recognised from the
+    `client_id` URL alone, never fetched.
   - **The other errors** get their existing `error_description` under a
     generic title.
   - **Security headers:** `Cache-Control: no-store`, and the

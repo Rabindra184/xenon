@@ -25,14 +25,19 @@ No database migration. On a hub, only the hub needs this release.
   address, no connection, a time-out) stops discovery offering documents for
   an hour, so the agent's next sign-in registers with the hub and works.
   Each such failure restarts the hour, and the first logs one warning naming
-  the setting, which makes it permanent. The hub still reads documents
+  the setting, which makes it permanent. Codex registers when its user signs in
+  again; Claude Code keeps the address it started with, so it first needs
+  `claude mcp logout <name>` (or `/mcp`, clear authentication), which the
+  page says. The hub still reads documents
   meanwhile, so agents already signed in by one keep refreshing: anyone can
   start the fallback by naming a URL that doesn't resolve, and all it does
   is send new agents to register.
 - **A sign-in error is a page, not JSON, in a browser.** Every refusal on the
   authorize page (an agent's details that can't be fetched, a bad request,
   too many sign-ins) is a short page saying what happened and what to do,
-  with the error code below. A client that asks for JSON, or says nothing,
+  with the error code below. For an agent whose details couldn't be fetched
+  it names that agent's next step: Claude Code's sign-out, Codex's sign-in,
+  or general advice for any other agent. A client that asks for JSON, or says nothing,
   gets the JSON it always got.
 
 ## 2.38.0

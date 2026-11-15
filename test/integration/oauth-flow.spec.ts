@@ -53,6 +53,8 @@ class SpecAgent implements OAuthClientProvider {
   saved?: OAuthTokens;
   verifier = '';
   authUrl?: URL;
+  /** An agent that names itself by a client ID metadata document, as Claude Code and Codex do. */
+  clientMetadataUrl?: string;
 
   constructor(readonly redirectUrl = 'http://127.0.0.1:47831/callback') {}
 
@@ -381,6 +383,38 @@ describe('agent sign-in (OAuth) end to end', () => {
       const metadata = await request(origin).get('/.well-known/oauth-authorization-server');
       expect(metadata.body.client_id_metadata_document_supported).to.equal(false);
       const agent = await signIn();
+      expect(agent.saved?.access_token).to.be.a('string');
+    } finally {
+      store.fetchDocument = fetchDocument;
+      resetClientDocumentFallback();
+    }
+  });
+
+  it('an agent that keeps the client id it saved is refused again, and registers once signed out', async () => {
+    // The SDK client saves the URL client_id before the browser opens, and a
+    // retry goes back with it whatever discovery says (Claude Code does this;
+    // Codex reads discovery again). So the page tells such an agent to sign
+    // out of the hub first.
+    const store = Container.get(ClientStore);
+    const fetchDocument = store.fetchDocument;
+    store.fetchDocument = sinon.stub().rejects(new ClientMetadataRefused('unresolvable', 'x'));
+    const documentUrl = 'https://agent.example/client.json';
+    try {
+      const agent = new SpecAgent();
+      agent.clientMetadataUrl = documentUrl;
+      for (const attempt of ['first', 'retry']) {
+        expect(await agentAuth(agent), attempt).to.equal('REDIRECT');
+        expect(agent.authUrl!.searchParams.get('client_id'), attempt).to.equal(documentUrl);
+        const res = await request(origin)
+          .get(agent.authUrl!.pathname + agent.authUrl!.search)
+          .set('x-forwarded-for', testAddress);
+        expect(res.status, attempt).to.equal(400);
+        expect(res.body.error_description, attempt).to.equal(DOCUMENT_UNREACHABLE);
+      }
+      // Signed out: the agent forgets its client and reads discovery again.
+      agent.info = undefined;
+      await signIn(agent);
+      expect(agent.clientInformation()?.client_id).to.not.equal(documentUrl);
       expect(agent.saved?.access_token).to.be.a('string');
     } finally {
       store.fetchDocument = fetchDocument;
@@ -803,7 +837,7 @@ describe('agent sign-in (OAuth) end to end', () => {
           .set('x-forwarded-for', testAddress)
           .set('accept', 'text/html,application/xhtml+xml,*/*;q=0.8');
         expect(res.status).to.equal(400);
-        expect(res.text).to.contain('start the sign-in again from your agent');
+        expect(res.text).to.contain('Cancel the waiting sign-in in your agent');
         expect(res.text).to.contain('XENON_MCP_CLIENT_DOCUMENTS=off');
       } finally {
         store.fetchDocument = fetchDocument;

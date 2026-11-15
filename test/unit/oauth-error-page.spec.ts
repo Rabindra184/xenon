@@ -32,12 +32,45 @@ describe('the sign-in error page', () => {
     expect(res.status).to.equal(400);
     expect(res.headers['content-type']).to.match(/^text\/html/);
     expect(res.text).to.contain("Xenon couldn't read this agent's details");
-    expect(res.text).to.contain('start the sign-in again from your agent');
+    expect(res.text).to.contain('Cancel the waiting sign-in in your agent');
     expect(res.text).to.contain('XENON_MCP_CLIENT_DOCUMENTS=off');
     expect(res.text).to.contain('Error: invalid_client (400)');
     expect(res.headers['cache-control']).to.equal('no-store');
     expect(res.headers['x-frame-options']).to.equal('DENY');
     expect(res.headers['content-security-policy']).to.contain("frame-ancestors 'none'");
+  });
+
+  it('tells Claude Code to sign out of the hub first, since it retries with the client id it saved', async () => {
+    const res = await request(
+      appAnswering(400, { error: 'invalid_client', error_description: DOCUMENT_UNREACHABLE }),
+    )
+      .get('/authorize')
+      .query({ client_id: 'https://claude.ai/oauth/claude-code-client-metadata' })
+      .set('accept', BROWSER);
+    expect(res.text).to.contain('claude mcp logout xenon');
+    expect(res.text).to.contain('/mcp');
+    expect(res.text).to.contain('cancel the waiting sign-in');
+  });
+
+  it('tells Codex only to sign in again, since it registers on a retry', async () => {
+    const res = await request(
+      appAnswering(400, { error: 'invalid_client', error_description: DOCUMENT_UNREACHABLE }),
+    )
+      .get('/authorize')
+      .query({ client_id: 'https://chatgpt.com/oauth/codex/BCTloOi1LG7q/client.json' })
+      .set('accept', BROWSER);
+    expect(res.text).to.contain('codex mcp login xenon');
+    expect(res.text).to.not.contain('logout');
+  });
+
+  it('tells any other agent to sign out first if it comes back to the page', async () => {
+    const res = await request(
+      appAnswering(400, { error: 'invalid_client', error_description: DOCUMENT_UNREACHABLE }),
+    )
+      .get('/authorize')
+      .query({ client_id: 'https://agent.example/client.json' })
+      .set('accept', BROWSER);
+    expect(res.text).to.contain('If it comes back to this page, sign the agent out of this hub');
   });
 
   it('leaves JSON to a client that asks for it, or says nothing', async () => {
