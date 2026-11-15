@@ -15,7 +15,9 @@ import {
   GET_WAIT_MAX_MS,
   MAX_MEMBERS,
   MAX_WAIT_MS,
+  MCP_LEASE_DEFAULT_MS,
 } from '../../services/lease/LeaseService';
+import { mcpContextOf } from '../../mcp/invokeApi';
 import { excludeTagsProblem, hostProblem } from '../../services/lease/leaseFilters';
 import type { LeaseFilters } from '../../services/lease/leaseFilters';
 import log from '../../logger';
@@ -74,6 +76,21 @@ function readGetWait(raw: unknown): number | null {
   return waitMs <= GET_WAIT_MAX_MS ? waitMs : null;
 }
 
+/** A plain client's lease lasts 30 minutes when it asks for no duration. */
+const DEFAULT_LEASE_MS = 30 * 60 * 1000;
+
+/**
+ * What an MCP tool's lease is (an agent's: CreateLeaseRequest.heartbeatFree),
+ * from the request's MCP context alone, which no network request can set
+ * (invokeApi.ts). A body's `heartbeatFree` or `grantId` is never read. A tool
+ * call with no grant (a key pair, auth disabled) is still heartbeat-free.
+ */
+function agentLease(req: Request): { heartbeatFree?: true; grantId?: string } {
+  const mcp = mcpContextOf(req);
+  if (!mcp) return {};
+  return { heartbeatFree: true, ...(mcp.grantId ? { grantId: mcp.grantId } : {}) };
+}
+
 /** The 410 body: today's, plus `reason` when a group ended for one. */
 function goneBody(err: LeaseGone, base: Record<string, unknown>): Record<string, unknown> {
   return err.reason === undefined ? base : { ...base, reason: err.reason };
@@ -85,7 +102,9 @@ interface MakeRouterOpts {
 
 export function makeRouter(opts: MakeRouterOpts = {}): Router {
   const router = Router();
-  const svc = opts.leaseService ?? Container.get(LeaseService);
+  // Read per request, so the service is the container's at the time of the
+  // call, not of the router's registration.
+  const service = () => opts.leaseService ?? Container.get(LeaseService);
   const logger = log.scope('sdk-leases-router');
 
   router.post('/', async (req: Request, res: Response) => {
@@ -100,10 +119,16 @@ export function makeRouter(opts: MakeRouterOpts = {}): Router {
     // bearer-authed lease create (e.g. xenon_acquire_device) was recorded as
     // actorId:'anonymous', teamId:null — losing attribution.
     const auth: any = (req as any).auth;
+    const agent = agentLease(req);
     try {
-      const out = await svc.create({
+      const out = await service().create({
         ...shape,
-        durationMs: typeof durationMs === 'number' ? durationMs : 30 * 60 * 1000,
+        durationMs:
+          typeof durationMs === 'number'
+            ? durationMs
+            : agent.heartbeatFree
+              ? MCP_LEASE_DEFAULT_MS
+              : DEFAULT_LEASE_MS,
         heartbeatSeconds: typeof heartbeatSeconds === 'number' ? heartbeatSeconds : 30,
         actorId: apiKey?.id ?? auth?.userId ?? 'anonymous',
         teamId: apiKey?.teamId ?? auth?.teamId ?? null,
@@ -112,6 +137,7 @@ export function makeRouter(opts: MakeRouterOpts = {}): Router {
         callerTeamIds: auth?.teamIds,
         buildId,
         reason,
+        ...agent,
       });
       return res.status(out.status === 'waiting' ? 202 : 201).json(out.body);
     } catch (err) {
@@ -145,7 +171,7 @@ export function makeRouter(opts: MakeRouterOpts = {}): Router {
     const left = new AbortController();
     res.on('close', () => left.abort());
     try {
-      const out = await svc.get(req.params.id, (req as any).leaseToken, waitMs, left.signal);
+      const out = await service().get(req.params.id, (req as any).leaseToken, waitMs, left.signal);
       if (left.signal.aborted) return undefined;
       return res.status(out.status === 'waiting' ? 202 : 200).json(out.body);
     } catch (err) {
@@ -160,7 +186,7 @@ export function makeRouter(opts: MakeRouterOpts = {}): Router {
 
   router.post('/:id/heartbeat', leaseTokenMiddleware, async (req: Request, res: Response) => {
     try {
-      const out = await svc.heartbeat(req.params.id, (req as any).leaseToken);
+      const out = await service().heartbeat(req.params.id, (req as any).leaseToken);
       return res.status(200).json(out);
     } catch (err) {
       if (err instanceof LeaseTokenMismatch) return res.status(403).json({ error: 'token_mismatch' });
@@ -175,7 +201,7 @@ export function makeRouter(opts: MakeRouterOpts = {}): Router {
     const { durationMs } = req.body ?? {};
     if (typeof durationMs !== 'number') return res.status(400).json({ error: 'bad_request', details: 'durationMs required' });
     try {
-      const out = await svc.extend(req.params.id, (req as any).leaseToken, durationMs);
+      const out = await service().extend(req.params.id, (req as any).leaseToken, durationMs);
       return res.status(200).json(out);
     } catch (err) {
       if (err instanceof LeaseTokenMismatch) return res.status(403).json({ error: 'token_mismatch' });
@@ -189,7 +215,7 @@ export function makeRouter(opts: MakeRouterOpts = {}): Router {
 
   router.delete('/:id', leaseTokenMiddleware, async (req: Request, res: Response) => {
     try {
-      await svc.release(req.params.id, (req as any).leaseToken);
+      await service().release(req.params.id, (req as any).leaseToken);
       return res.status(204).send();
     } catch (err) {
       if (err instanceof LeaseTokenMismatch) return res.status(403).json({ error: 'token_mismatch' });

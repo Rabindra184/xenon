@@ -392,7 +392,9 @@ exports.Prisma.LeaseScalarFieldEnum = {
   waitUntil: 'waitUntil',
   durationMs: 'durationMs',
   callerTeamIds: 'callerTeamIds',
-  endReason: 'endReason'
+  endReason: 'endReason',
+  heartbeatFree: 'heartbeatFree',
+  grantId: 'grantId'
 };
 
 exports.Prisma.LeaseMemberScalarFieldEnum = {

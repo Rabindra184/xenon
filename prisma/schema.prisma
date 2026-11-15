@@ -367,12 +367,18 @@ model Lease {
   durationMs       Float?
   callerTeamIds    String?
   endReason        String?
+  // An agent's lease (taken through /xenon/mcp): it needs no heartbeats and
+  // ends at expiresAt, on release, or when the sign-in grant it was taken
+  // under (grantId; null for a caller without one) is revoked.
+  heartbeatFree    Boolean?
+  grantId          String?
   members          LeaseMember[]
 
   @@index([status, expiresAt])
   @@index([status, lastHeartbeatAt, heartbeatSeconds])
   @@index([actorId])
   @@index([deviceUdid, deviceHost])
+  @@index([grantId])
 }
 
 // One phone of a lease: held for it while the lease waits, leased once it is

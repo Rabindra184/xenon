@@ -19575,6 +19575,8 @@ export namespace Prisma {
     durationMs: number | null
     callerTeamIds: string | null
     endReason: string | null
+    heartbeatFree: boolean | null
+    grantId: string | null
   }
 
   export type LeaseMaxAggregateOutputType = {
@@ -19598,6 +19600,8 @@ export namespace Prisma {
     durationMs: number | null
     callerTeamIds: string | null
     endReason: string | null
+    heartbeatFree: boolean | null
+    grantId: string | null
   }
 
   export type LeaseCountAggregateOutputType = {
@@ -19621,6 +19625,8 @@ export namespace Prisma {
     durationMs: number
     callerTeamIds: number
     endReason: number
+    heartbeatFree: number
+    grantId: number
     _all: number
   }
 
@@ -19662,6 +19668,8 @@ export namespace Prisma {
     durationMs?: true
     callerTeamIds?: true
     endReason?: true
+    heartbeatFree?: true
+    grantId?: true
   }
 
   export type LeaseMaxAggregateInputType = {
@@ -19685,6 +19693,8 @@ export namespace Prisma {
     durationMs?: true
     callerTeamIds?: true
     endReason?: true
+    heartbeatFree?: true
+    grantId?: true
   }
 
   export type LeaseCountAggregateInputType = {
@@ -19708,6 +19718,8 @@ export namespace Prisma {
     durationMs?: true
     callerTeamIds?: true
     endReason?: true
+    heartbeatFree?: true
+    grantId?: true
     _all?: true
   }
 
@@ -19818,6 +19830,8 @@ export namespace Prisma {
     durationMs: number | null
     callerTeamIds: string | null
     endReason: string | null
+    heartbeatFree: boolean | null
+    grantId: string | null
     _count: LeaseCountAggregateOutputType | null
     _avg: LeaseAvgAggregateOutputType | null
     _sum: LeaseSumAggregateOutputType | null
@@ -19860,6 +19874,8 @@ export namespace Prisma {
     durationMs?: boolean
     callerTeamIds?: boolean
     endReason?: boolean
+    heartbeatFree?: boolean
+    grantId?: boolean
     members?: boolean | Lease$membersArgs<ExtArgs>
     _count?: boolean | LeaseCountOutputTypeDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["lease"]>
@@ -19885,6 +19901,8 @@ export namespace Prisma {
     durationMs?: boolean
     callerTeamIds?: boolean
     endReason?: boolean
+    heartbeatFree?: boolean
+    grantId?: boolean
   }, ExtArgs["result"]["lease"]>
 
   export type LeaseSelectScalar = {
@@ -19908,6 +19926,8 @@ export namespace Prisma {
     durationMs?: boolean
     callerTeamIds?: boolean
     endReason?: boolean
+    heartbeatFree?: boolean
+    grantId?: boolean
   }
 
   export type LeaseInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
@@ -19942,6 +19962,8 @@ export namespace Prisma {
       durationMs: number | null
       callerTeamIds: string | null
       endReason: string | null
+      heartbeatFree: boolean | null
+      grantId: string | null
     }, ExtArgs["result"]["lease"]>
     composites: {}
   }
@@ -20356,6 +20378,8 @@ export namespace Prisma {
     readonly durationMs: FieldRef<"Lease", 'Float'>
     readonly callerTeamIds: FieldRef<"Lease", 'String'>
     readonly endReason: FieldRef<"Lease", 'String'>
+    readonly heartbeatFree: FieldRef<"Lease", 'Boolean'>
+    readonly grantId: FieldRef<"Lease", 'String'>
   }
     
 
@@ -34850,7 +34874,9 @@ export namespace Prisma {
     waitUntil: 'waitUntil',
     durationMs: 'durationMs',
     callerTeamIds: 'callerTeamIds',
-    endReason: 'endReason'
+    endReason: 'endReason',
+    heartbeatFree: 'heartbeatFree',
+    grantId: 'grantId'
   };
 
   export type LeaseScalarFieldEnum = (typeof LeaseScalarFieldEnum)[keyof typeof LeaseScalarFieldEnum]
@@ -36643,6 +36669,8 @@ export namespace Prisma {
     durationMs?: FloatNullableFilter<"Lease"> | number | null
     callerTeamIds?: StringNullableFilter<"Lease"> | string | null
     endReason?: StringNullableFilter<"Lease"> | string | null
+    heartbeatFree?: BoolNullableFilter<"Lease"> | boolean | null
+    grantId?: StringNullableFilter<"Lease"> | string | null
     members?: LeaseMemberListRelationFilter
   }
 
@@ -36667,6 +36695,8 @@ export namespace Prisma {
     durationMs?: SortOrderInput | SortOrder
     callerTeamIds?: SortOrderInput | SortOrder
     endReason?: SortOrderInput | SortOrder
+    heartbeatFree?: SortOrderInput | SortOrder
+    grantId?: SortOrderInput | SortOrder
     members?: LeaseMemberOrderByRelationAggregateInput
   }
 
@@ -36694,6 +36724,8 @@ export namespace Prisma {
     durationMs?: FloatNullableFilter<"Lease"> | number | null
     callerTeamIds?: StringNullableFilter<"Lease"> | string | null
     endReason?: StringNullableFilter<"Lease"> | string | null
+    heartbeatFree?: BoolNullableFilter<"Lease"> | boolean | null
+    grantId?: StringNullableFilter<"Lease"> | string | null
     members?: LeaseMemberListRelationFilter
   }, "id">
 
@@ -36718,6 +36750,8 @@ export namespace Prisma {
     durationMs?: SortOrderInput | SortOrder
     callerTeamIds?: SortOrderInput | SortOrder
     endReason?: SortOrderInput | SortOrder
+    heartbeatFree?: SortOrderInput | SortOrder
+    grantId?: SortOrderInput | SortOrder
     _count?: LeaseCountOrderByAggregateInput
     _avg?: LeaseAvgOrderByAggregateInput
     _max?: LeaseMaxOrderByAggregateInput
@@ -36749,6 +36783,8 @@ export namespace Prisma {
     durationMs?: FloatNullableWithAggregatesFilter<"Lease"> | number | null
     callerTeamIds?: StringNullableWithAggregatesFilter<"Lease"> | string | null
     endReason?: StringNullableWithAggregatesFilter<"Lease"> | string | null
+    heartbeatFree?: BoolNullableWithAggregatesFilter<"Lease"> | boolean | null
+    grantId?: StringNullableWithAggregatesFilter<"Lease"> | string | null
   }
 
   export type LeaseMemberWhereInput = {
@@ -39558,6 +39594,8 @@ export namespace Prisma {
     durationMs?: number | null
     callerTeamIds?: string | null
     endReason?: string | null
+    heartbeatFree?: boolean | null
+    grantId?: string | null
     members?: LeaseMemberCreateNestedManyWithoutLeaseInput
   }
 
@@ -39582,6 +39620,8 @@ export namespace Prisma {
     durationMs?: number | null
     callerTeamIds?: string | null
     endReason?: string | null
+    heartbeatFree?: boolean | null
+    grantId?: string | null
     members?: LeaseMemberUncheckedCreateNestedManyWithoutLeaseInput
   }
 
@@ -39606,6 +39646,8 @@ export namespace Prisma {
     durationMs?: NullableFloatFieldUpdateOperationsInput | number | null
     callerTeamIds?: NullableStringFieldUpdateOperationsInput | string | null
     endReason?: NullableStringFieldUpdateOperationsInput | string | null
+    heartbeatFree?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    grantId?: NullableStringFieldUpdateOperationsInput | string | null
     members?: LeaseMemberUpdateManyWithoutLeaseNestedInput
   }
 
@@ -39630,6 +39672,8 @@ export namespace Prisma {
     durationMs?: NullableFloatFieldUpdateOperationsInput | number | null
     callerTeamIds?: NullableStringFieldUpdateOperationsInput | string | null
     endReason?: NullableStringFieldUpdateOperationsInput | string | null
+    heartbeatFree?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    grantId?: NullableStringFieldUpdateOperationsInput | string | null
     members?: LeaseMemberUncheckedUpdateManyWithoutLeaseNestedInput
   }
 
@@ -39654,6 +39698,8 @@ export namespace Prisma {
     durationMs?: number | null
     callerTeamIds?: string | null
     endReason?: string | null
+    heartbeatFree?: boolean | null
+    grantId?: string | null
   }
 
   export type LeaseUpdateManyMutationInput = {
@@ -39677,6 +39723,8 @@ export namespace Prisma {
     durationMs?: NullableFloatFieldUpdateOperationsInput | number | null
     callerTeamIds?: NullableStringFieldUpdateOperationsInput | string | null
     endReason?: NullableStringFieldUpdateOperationsInput | string | null
+    heartbeatFree?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    grantId?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type LeaseUncheckedUpdateManyInput = {
@@ -39700,6 +39748,8 @@ export namespace Prisma {
     durationMs?: NullableFloatFieldUpdateOperationsInput | number | null
     callerTeamIds?: NullableStringFieldUpdateOperationsInput | string | null
     endReason?: NullableStringFieldUpdateOperationsInput | string | null
+    heartbeatFree?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    grantId?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type LeaseMemberCreateInput = {
@@ -42065,6 +42115,8 @@ export namespace Prisma {
     durationMs?: SortOrder
     callerTeamIds?: SortOrder
     endReason?: SortOrder
+    heartbeatFree?: SortOrder
+    grantId?: SortOrder
   }
 
   export type LeaseAvgOrderByAggregateInput = {
@@ -42096,6 +42148,8 @@ export namespace Prisma {
     durationMs?: SortOrder
     callerTeamIds?: SortOrder
     endReason?: SortOrder
+    heartbeatFree?: SortOrder
+    grantId?: SortOrder
   }
 
   export type LeaseMinOrderByAggregateInput = {
@@ -42119,6 +42173,8 @@ export namespace Prisma {
     durationMs?: SortOrder
     callerTeamIds?: SortOrder
     endReason?: SortOrder
+    heartbeatFree?: SortOrder
+    grantId?: SortOrder
   }
 
   export type LeaseSumOrderByAggregateInput = {
@@ -45589,6 +45645,8 @@ export namespace Prisma {
     durationMs?: number | null
     callerTeamIds?: string | null
     endReason?: string | null
+    heartbeatFree?: boolean | null
+    grantId?: string | null
   }
 
   export type LeaseUncheckedCreateWithoutMembersInput = {
@@ -45612,6 +45670,8 @@ export namespace Prisma {
     durationMs?: number | null
     callerTeamIds?: string | null
     endReason?: string | null
+    heartbeatFree?: boolean | null
+    grantId?: string | null
   }
 
   export type LeaseCreateOrConnectWithoutMembersInput = {
@@ -45651,6 +45711,8 @@ export namespace Prisma {
     durationMs?: NullableFloatFieldUpdateOperationsInput | number | null
     callerTeamIds?: NullableStringFieldUpdateOperationsInput | string | null
     endReason?: NullableStringFieldUpdateOperationsInput | string | null
+    heartbeatFree?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    grantId?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type LeaseUncheckedUpdateWithoutMembersInput = {
@@ -45674,6 +45736,8 @@ export namespace Prisma {
     durationMs?: NullableFloatFieldUpdateOperationsInput | number | null
     callerTeamIds?: NullableStringFieldUpdateOperationsInput | string | null
     endReason?: NullableStringFieldUpdateOperationsInput | string | null
+    heartbeatFree?: NullableBoolFieldUpdateOperationsInput | boolean | null
+    grantId?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type TeamCreateWithoutApiKeysInput = {

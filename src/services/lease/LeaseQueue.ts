@@ -21,6 +21,7 @@ import { defaultNodePairAuthProvider, MAX_MEMBERS, NodePairAuthProvider } from '
 import { onPhoneFreed, phoneFreed } from './leaseQueueKick';
 import { lockExactPhone } from './lockExactPhone';
 import {
+  agentLeaseColumns,
   endedData,
   LeaseEndReason,
   missedHeartbeats,
@@ -45,6 +46,10 @@ export interface TryNowRequest {
   reason?: string;
   heartbeatSeconds: number;
   tokenHash: string;
+  /** An agent's lease: no heartbeats (leaseStatus.ts, HeartbeatFields). */
+  heartbeatFree?: boolean;
+  /** The sign-in grant an agent's lease was taken under. */
+  grantId?: string;
 }
 
 export type TryNowOutcome = { leaseId: string } | 'busy' | 'unhealthy';
@@ -394,11 +399,18 @@ export class LeaseQueue {
       waitUntil: number | null;
       heartbeatSeconds: number | null;
       lastHeartbeatAt: number;
+      heartbeatFree: boolean | null;
     }>;
     try {
       waiters = await this.db.lease.findMany({
         where: { status: 'waiting' },
-        select: { id: true, waitUntil: true, heartbeatSeconds: true, lastHeartbeatAt: true },
+        select: {
+          id: true,
+          waitUntil: true,
+          heartbeatSeconds: true,
+          lastHeartbeatAt: true,
+          heartbeatFree: true,
+        },
       });
     } catch (err) {
       this.logger.warn(`couldn't read the waiting leases: ${(err as Error)?.message}`);
@@ -467,6 +479,7 @@ export class LeaseQueue {
         durationMs: true,
         heartbeatSeconds: true,
         lastHeartbeatAt: true,
+        heartbeatFree: true,
       },
     });
     const at = rows.filter((row) => this.inQueue(row, now)).findIndex((row) => row.id === leaseId);
@@ -910,6 +923,7 @@ export class LeaseQueue {
       callerTeamIds:
         request.callerTeamIds === undefined ? null : JSON.stringify(request.callerTeamIds),
       durationMs: request.durationMs,
+      ...agentLeaseColumns(request),
     };
     /** Phones the lock refused: taken since they were read. */
     const refused = new Set<string>();

@@ -35,6 +35,7 @@ import { isLeaseHolder } from '../../services/device-access/deviceAccessPolicy';
 import { SessionOwnerResolver } from '../../services/device-access/SessionOwnerResolver';
 import { ambiguousPhoneBody, readHostParam } from '../../middleware/controlDevice';
 import { forgetUnansweredRow } from '../../data-service/unansweredRows';
+import { mcpContextOf } from '../../mcp/invokeApi';
 
 const store = DeviceStoreFactory.getStore();
 const pendingStore = DeviceStoreFactory.getPendingSessionStore();
@@ -45,6 +46,11 @@ const SERVER_UP_TIME = new Date().toISOString();
 type LeaseState = 'held' | 'leased' | null;
 /** Whether the lease is the caller's own: never who holds it. */
 type LeaseHolder = 'you' | 'other' | null;
+/** The caller's own active lease on a phone, for an MCP tool (xenon_list_devices). */
+interface MyLease {
+  lockId: string;
+  expiresAt: number;
+}
 
 /**
  * Each phone's lease state, from one read of the lease table for the whole
@@ -83,7 +89,7 @@ async function withLeaseStates<T extends IDevice>(
     }
     return found;
   };
-  return Promise.all(
+  const listed = await Promise.all(
     devices.map(async (d) => {
       const lease = leases?.get(leaseKey(d.udid, d.host));
       const leaseState: LeaseState = !lease ? null : lease.status === 'waiting' ? 'held' : 'leased';
@@ -91,6 +97,45 @@ async function withLeaseStates<T extends IDevice>(
       return { ...d, leaseState, leaseHolder };
     }),
   );
+  if (!mcpContextOf(request) || !leases) return listed;
+  return withMyLeases(listed, leases);
+}
+
+/**
+ * For an MCP tool's call only (mcpContextOf): `myLease` on each phone the
+ * caller's own active lease has, with its end, so an agent sees the time a
+ * phone it forgot has left. A REST client's answer is unchanged. A read that
+ * fails lists the phones without it, with a warning.
+ */
+async function withMyLeases<
+  T extends IDevice & { leaseState: LeaseState; leaseHolder: LeaseHolder },
+>(
+  devices: T[],
+  leases: Awaited<ReturnType<typeof activeLeasesByDevice>>,
+): Promise<Array<T & { myLease?: MyLease }>> {
+  const mine = new Map<string, string>();
+  for (const d of devices) {
+    if (d.leaseHolder !== 'you' || d.leaseState !== 'leased') continue;
+    const lease = leases.get(leaseKey(d.udid, d.host));
+    if (lease) mine.set(leaseKey(d.udid, d.host), lease.id);
+  }
+  if (mine.size === 0) return devices;
+  let ends: Map<string, number>;
+  try {
+    const rows: Array<{ id: string; expiresAt: number }> = await prisma.lease.findMany({
+      where: { id: { in: [...new Set(mine.values())] } },
+      select: { id: true, expiresAt: true },
+    });
+    ends = new Map(rows.map((row) => [row.id, row.expiresAt]));
+  } catch (err: any) {
+    log.warn(`Devices listed without the caller's leases: ${err?.message || err}`);
+    return devices;
+  }
+  return devices.map((d) => {
+    const lockId = mine.get(leaseKey(d.udid, d.host));
+    const expiresAt = lockId ? ends.get(lockId) : undefined;
+    return lockId && expiresAt !== undefined ? { ...d, myLease: { lockId, expiresAt } } : d;
+  });
 }
 
 async function getDevices(request: Request, response: Response) {

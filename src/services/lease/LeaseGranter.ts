@@ -65,6 +65,10 @@ export interface GroupLeaseCreateData {
   /** JSON, the caller's teams; null is unscoped. */
   callerTeamIds?: string | null;
   durationMs?: number | null;
+  /** An agent's lease: no heartbeats. Absent for any other. */
+  heartbeatFree?: boolean;
+  /** The sign-in grant an agent's lease was taken under. */
+  grantId?: string;
 }
 
 /**

@@ -23,7 +23,14 @@ import { leaseKey } from './activeLeases';
 import { filledCount, maxMatching } from './memberMatch';
 import { LeaseQueue } from './LeaseQueue';
 import type { GiveUpOptions, MemberRequest, TryNowRequest, TryNowOutcome } from './LeaseQueue';
-import { endedData, goneReason, waiterEnd } from './leaseStatus';
+import {
+  agentLeaseColumns,
+  endedData,
+  goneReason,
+  LIVE_LEASE_STATUSES,
+  MCP_LEASE_DEFAULT_MS,
+  waiterEnd,
+} from './leaseStatus';
 import {
   GrantedBody,
   MemberWithDevice,
@@ -31,6 +38,8 @@ import {
   grantedBody,
   waitingBody,
 } from './leaseResponse';
+
+export { MCP_LEASE_DEFAULT_MS };
 
 export interface CreateLeaseRequest {
   /** One phone: a lease of one member. Send this or `members`, never both. */
@@ -54,6 +63,14 @@ export interface CreateLeaseRequest {
   callerTeamIds?: string[];
   buildId?: string;
   reason?: string;
+  /**
+   * An agent's lease (taken through /xenon/mcp): it needs no heartbeats and
+   * ends at `expiresAt`, on release, or when its grant is revoked. Set only
+   * from the request's MCP context (sdk-leases.ts), never from a body.
+   */
+  heartbeatFree?: boolean;
+  /** The sign-in grant an agent's lease was taken under (endLeasesOfGrant). */
+  grantId?: string;
 }
 
 /**
@@ -323,6 +340,7 @@ export class LeaseService {
         reason: req.reason,
         heartbeatSeconds,
         tokenHash,
+        ...agentLeaseColumns(req),
       });
       if (outcome === 'busy') throw busy();
       if (outcome === 'unhealthy') {
@@ -366,6 +384,7 @@ export class LeaseService {
         callerTeamIds: req.callerTeamIds === undefined ? null : JSON.stringify(req.callerTeamIds),
         waitUntil: now + waitMs,
         durationMs,
+        ...agentLeaseColumns(req),
       },
     });
     // Never throws: a failed pass leaves the request waiting for the next.
@@ -731,6 +750,69 @@ export class LeaseService {
     } finally {
       this.queue.kick();
     }
+  }
+
+  /**
+   * Ends every lease taken under the sign-in grant `grantId`, as a release
+   * does: a waiting one leaves the queue (`expired`, its holds let go), an
+   * active one is `released` and each member's ports freed and its lease
+   * lock dropped (`releaseLeaseLock`, which never frees a phone a session or
+   * hold still has, so a session started on the lease keeps its phone).
+   * `endReason` is `reason` either way. Answers how many it ended.
+   *
+   * Each end is written only while the lease is still live, so a lease its
+   * client released or the sweeper ended meanwhile is left as it is. A lease
+   * whose release fails after its end was written still counts: it has
+   * ended, and the failure is logged. Then a grant pass runs.
+   */
+  async endLeasesOfGrant(grantId: string, reason: 'grant_revoked'): Promise<number> {
+    const leases: any[] = await this.db.lease.findMany({
+      where: { grantId, status: { in: [...LIVE_LEASE_STATUSES] } },
+      include: { members: true },
+    });
+    let ended = 0;
+    try {
+      for (let lease of leases) {
+        try {
+          if (lease.status === 'waiting') {
+            if ((await this.queue.giveUp(lease.id, { reason })) === 'expired') {
+              ended += 1;
+              continue;
+            }
+            // A pass granted it meanwhile: end it as granted.
+            lease = await this.db.lease.findUnique({
+              where: { id: lease.id },
+              include: { members: true },
+            });
+            if (lease?.status !== 'active') continue;
+          }
+          const written = await this.db.lease.updateMany({
+            where: { id: lease.id, status: 'active' },
+            data: endedData('released', reason),
+          });
+          if (written?.count === 0) continue;
+          ended += 1;
+          await releaseLeaseMembers(
+            {
+              db: this.db,
+              store: this.store,
+              phoneServerPorts: this.phoneServerPorts,
+              logger: this.logger,
+            },
+            lease,
+            leaseMembersOf(lease),
+          );
+        } catch (err) {
+          this.logger.warn(
+            `couldn't end lease ${lease?.id} of a revoked grant: ${(err as Error)?.message ?? err}`,
+          );
+        }
+      }
+    } finally {
+      if (ended > 0) this.queue.kick();
+    }
+    if (ended > 0) this.logger.info(`ended ${ended} lease(s) of grant ${grantId} (${reason})`);
+    return ended;
   }
 
   /**

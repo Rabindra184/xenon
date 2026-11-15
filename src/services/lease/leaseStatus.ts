@@ -34,6 +34,9 @@ const MEMBER_LOST = 'member_lost: ';
  * - `unreadable_request`: a waiting lease whose stored request no pass can
  *   read, given up when its client next asked.
  * - `member_lost: <which, and why>`: a group lost a phone (status `ended`).
+ * - `grant_revoked`: the sign-in grant an agent's lease was taken under was
+ *   revoked (LeaseService.endLeasesOfGrant): `released` if it was active,
+ *   `expired` if it was waiting.
  */
 export type LeaseEndReason =
   | 'client_released'
@@ -41,6 +44,7 @@ export type LeaseEndReason =
   | 'missed_heartbeats'
   | 'past_end'
   | 'unreadable_request'
+  | 'grant_revoked'
   | `member_lost: ${string}`;
 
 /** A group's end for a lost member: `member_lost: member 1 (udid) disconnected`. */
@@ -84,11 +88,42 @@ export function liveLeaseWhere(now: number) {
   return { OR: [{ status: 'active', expiresAt: { gte: now } }, waitingWhere(now)] };
 }
 
-/** True when the client missed three heartbeats. */
-export function missedHeartbeats(
-  lease: { heartbeatSeconds: number | null; lastHeartbeatAt: number },
-  now: number,
-): boolean {
+/**
+ * What the heartbeat rule reads of a lease. `heartbeatFree` is an agent's
+ * lease (taken through /xenon/mcp): its client sends no heartbeats, so it
+ * never misses them, and it ends at its `expiresAt`, on release, or when its
+ * grant is revoked.
+ */
+export interface HeartbeatFields {
+  heartbeatSeconds: number | null;
+  lastHeartbeatAt: number;
+  heartbeatFree?: boolean | null;
+}
+
+/**
+ * How long an agent's lease lasts when it asks for no duration: 15 minutes.
+ * It sends no heartbeats, so its end is what lets go of a phone an agent
+ * forgot; xenon_extend_device moves it out.
+ */
+export const MCP_LEASE_DEFAULT_MS = 900_000;
+
+/**
+ * The Lease columns that make a lease an agent's: `heartbeatFree` and the
+ * grant, written only when set, so every other lease's row is as before.
+ */
+export function agentLeaseColumns(request: { heartbeatFree?: boolean; grantId?: string }): {
+  heartbeatFree?: true;
+  grantId?: string;
+} {
+  return {
+    ...(request.heartbeatFree === true ? { heartbeatFree: true as const } : {}),
+    ...(request.grantId ? { grantId: request.grantId } : {}),
+  };
+}
+
+/** True when the client missed three heartbeats; never for a heartbeat-free lease. */
+export function missedHeartbeats(lease: HeartbeatFields, now: number): boolean {
+  if (lease.heartbeatFree === true) return false;
   const thresholdMs = (lease.heartbeatSeconds ?? 30) * 1000 * 3;
   return lease.lastHeartbeatAt + thresholdMs < now;
 }
@@ -105,7 +140,7 @@ export interface LeaseEnd {
  * heartbeats too by the next sweep.
  */
 export function activeLeaseEnd(
-  lease: { heartbeatSeconds: number | null; lastHeartbeatAt: number; expiresAt: number },
+  lease: HeartbeatFields & { expiresAt: number },
   now: number,
 ): LeaseEnd | null {
   if (lease.expiresAt < now) {
@@ -121,7 +156,7 @@ export function activeLeaseEnd(
  * (`waitUntil`; null never does), or its client missed three heartbeats.
  */
 export function waiterEnd(
-  lease: { waitUntil: number | null; heartbeatSeconds: number | null; lastHeartbeatAt: number },
+  lease: HeartbeatFields & { waitUntil: number | null },
   now: number,
 ): LeaseEnd | null {
   if (lease.waitUntil != null && lease.waitUntil < now) {

@@ -2,7 +2,12 @@ import { config } from '../config';
 import type { McpCaller } from './mcpCredential';
 import { mcpScopesOf, XenonTool } from './tool';
 import { labInfoTool } from './tools/labInfo';
-import { listDevicesTool } from './tools/devices';
+import {
+  acquireDeviceTool,
+  extendDeviceTool,
+  listDevicesTool,
+  releaseDeviceTool,
+} from './tools/devices';
 import { healingEventsTool, selectorHealthTool } from './tools/analytics';
 
 /**
@@ -13,6 +18,9 @@ import { healingEventsTool, selectorHealthTool } from './tools/analytics';
 const TOOLS: readonly XenonTool[] = [
   labInfoTool,
   listDevicesTool,
+  acquireDeviceTool,
+  releaseDeviceTool,
+  extendDeviceTool,
   selectorHealthTool,
   healingEventsTool,
 ];

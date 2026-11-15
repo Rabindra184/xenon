@@ -42,6 +42,9 @@ describe('capabilities payload', () => {
         tools: [
           'xenon_lab_info',
           'xenon_list_devices',
+          'xenon_acquire_device',
+          'xenon_release_device',
+          'xenon_extend_device',
           'xenon_selector_health',
           'xenon_healing_events',
         ],
@@ -57,6 +60,9 @@ describe('capabilities payload', () => {
       tools: [
         'xenon_lab_info',
         'xenon_list_devices',
+        'xenon_acquire_device',
+        'xenon_release_device',
+        'xenon_extend_device',
         'xenon_selector_health',
         'xenon_healing_events',
       ],
