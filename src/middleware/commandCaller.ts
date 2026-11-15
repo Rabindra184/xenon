@@ -6,7 +6,10 @@ import {
   verifyKeyPairCredential,
   verifySessionTokenCredential,
   isWrongSessionToken,
+  grantIdOf,
 } from './verifyCredential';
+import { Container } from 'typedi';
+import { RevokedGrants } from '../services/oauth/revokedGrants';
 import { readBasicCredential } from './basicCredential';
 import { sessionTokenGrantsSessions } from '../services/session/sessionIdentity';
 import type { McpCaller } from '../mcp/mcpCredential';
@@ -106,6 +109,12 @@ export function commandCallerOf(mcp: McpCaller): CommandCaller {
  *
  * REST re-verifies on every request, and createSession verifies the
  * credentials it is given, so only in-session commands see the window.
+ *
+ * The one exception is an agent's sign-in grant (a Bearer or session
+ * token's `gid`):
+ * revoking it is meant to stop the agent at once, so a remembered token of a
+ * grant asks RevokedGrants again on every command. That is memory, no query,
+ * until the grant's own 30 s are up, and a revoke on this server clears it.
  */
 export const CALLER_CACHE_TTL_MS = 30_000;
 
@@ -116,6 +125,8 @@ interface VerifierDeps {
   verifyKeyPair: typeof verifyKeyPairCredential;
   verifyBearer: typeof verifyBearerCredential;
   verifySessionToken: typeof verifySessionTokenCredential;
+  /** Whether a sign-in grant still stands (RevokedGrants.isLive). */
+  grantLive: (grantId: string) => Promise<boolean>;
   now: () => number;
   ttlMs: number;
   maxEntries: number;
@@ -124,6 +135,8 @@ interface VerifierDeps {
 interface CacheEntry {
   caller: CommandCaller;
   expiresAt: number;
+  /** The sign-in grant a Bearer token was issued under, asked again on every hit. */
+  grantId?: string;
 }
 
 /**
@@ -145,6 +158,7 @@ export class CommandCallerVerifier {
       verifyKeyPair: verifyKeyPairCredential,
       verifyBearer: verifyBearerCredential,
       verifySessionToken: verifySessionTokenCredential,
+      grantLive: (grantId) => Container.get(RevokedGrants).isLive(grantId),
       now: Date.now,
       ttlMs: CALLER_CACHE_TTL_MS,
       maxEntries: CALLER_CACHE_MAX_ENTRIES,
@@ -157,20 +171,36 @@ export class CommandCallerVerifier {
     const key = cacheKey(credential);
     const now = this.deps.now();
     const hit = this.cache.get(key);
-    if (hit && hit.expiresAt > now) return { valid: true, caller: hit.caller };
+    if (hit && hit.expiresAt > now) {
+      if (hit.grantId === undefined || (await this.deps.grantLive(hit.grantId))) {
+        return { valid: true, caller: hit.caller };
+      }
+      this.cache.delete(key);
+      return { valid: false };
+    }
     if (hit) this.cache.delete(key);
 
     const verified = await this.check(credential);
     if (!verified) return { valid: false };
 
     const expiresAt = Math.min(now + this.deps.ttlMs, verified.credentialExpiresAt ?? Infinity);
-    if (expiresAt > now) this.remember(key, { caller: verified.caller, expiresAt }, now);
+    if (expiresAt > now) {
+      this.remember(
+        key,
+        {
+          caller: verified.caller,
+          expiresAt,
+          ...(verified.grantId !== undefined ? { grantId: verified.grantId } : {}),
+        },
+        now,
+      );
+    }
     return { valid: true, caller: verified.caller };
   }
 
   private async check(
     credential: Exclude<PresentedCredential, { kind: 'none' } | { kind: 'unreadable' }>,
-  ): Promise<{ caller: CommandCaller; credentialExpiresAt?: number } | null> {
+  ): Promise<{ caller: CommandCaller; credentialExpiresAt?: number; grantId?: string } | null> {
     if (credential.kind === 'key-pair') {
       const out = await this.deps.verifyKeyPair(credential.accessKey, credential.token);
       if (!out) return null;
@@ -205,6 +235,7 @@ export class CommandCallerVerifier {
         }),
       },
       credentialExpiresAt: typeof out.payload.exp === 'number' ? out.payload.exp * 1000 : undefined,
+      grantId: grantIdOf(out.payload),
     };
   }
 
@@ -217,7 +248,7 @@ export class CommandCallerVerifier {
    */
   private async checkSessionToken(
     token: string,
-  ): Promise<{ caller: CommandCaller; credentialExpiresAt?: number } | null> {
+  ): Promise<{ caller: CommandCaller; credentialExpiresAt?: number; grantId?: string } | null> {
     let out: Awaited<ReturnType<typeof verifySessionTokenCredential>>;
     try {
       out = await this.deps.verifySessionToken(token);
@@ -236,6 +267,7 @@ export class CommandCallerVerifier {
         }),
       },
       credentialExpiresAt: typeof out.payload.exp === 'number' ? out.payload.exp * 1000 : undefined,
+      grantId: grantIdOf(out.payload),
     };
   }
 

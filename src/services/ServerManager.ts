@@ -83,6 +83,7 @@ import {
   recordingConfigFrom,
 } from '../config';
 import { SocketServer } from './SocketServer';
+import { watchDepartedUsers } from './oauth/departedUsers';
 import { noteServerLogFilters } from './logging/tokenLogFilter';
 import { readAiRedaction } from './ai/aiRedaction';
 import { SocketClient } from './SocketClient';
@@ -787,6 +788,11 @@ export class ServerManager {
 
       const socketServer = Container.get(SocketServer);
       socketServer.initialize(httpServer);
+      // A user made Inactive or deleted: their agents' sign-ins are revoked
+      // and their agents' leases end (departedUsers.ts), as their sockets
+      // are checked again (SocketServer.recheckUser).
+      const stopWatchingUsers = watchDepartedUsers();
+      httpServer?.once?.('close', stopWatchingUsers);
 
       const tracingService = Container.get(TracingService);
       tracingService.initialize({ isHub: !pluginArgs.hub });

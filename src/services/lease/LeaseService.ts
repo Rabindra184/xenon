@@ -252,6 +252,13 @@ export class LeaseMemberRequired extends Error {
   }
 }
 
+/**
+ * The creators a lease records with no user behind them: `auth-disabled`
+ * (authDisabledAuth, every caller with auth disabled) and `anonymous` (no
+ * identity at all). Never an orphan of a deleted user's.
+ */
+const NO_ONES = new Set(['auth-disabled', 'anonymous']);
+
 @Service()
 export class LeaseService {
   private logger = log.scope('LeaseService');
@@ -808,6 +815,61 @@ export class LeaseService {
       where: { grantId, status: { in: [...LIVE_LEASE_STATUSES] } },
       include: { members: true },
     });
+    return this.endEach(leases, reason, `grant ${grantId}`);
+  }
+
+  /**
+   * Ends the agents' leases taken under no grant (`heartbeatFree`, no
+   * `grantId`: a key pair or Basic credential on /xenon/mcp) whose creator
+   * (`actorId`, the creating key's id or user's id) is one of `actorIds`, as
+   * endLeasesOfGrant ends a grant's. With `orphans`, also those whose creator
+   * is now neither a user nor a key: a deleted user's keys go with them, so
+   * by then no row names whose they were. A lease of no one's (NO_ONES: auth
+   * disabled, or no identity) is never one. Answers how many it ended.
+   */
+  async endAgentLeasesOf(
+    actorIds: string[],
+    reason: 'user_not_active',
+    opts: { orphans?: boolean } = {},
+  ): Promise<number> {
+    const leases: any[] = await this.db.lease.findMany({
+      where: {
+        heartbeatFree: true,
+        grantId: null,
+        status: { in: [...LIVE_LEASE_STATUSES] },
+        ...(opts.orphans ? {} : { actorId: { in: actorIds } }),
+      },
+      include: { members: true },
+    });
+    let ending = leases;
+    if (opts.orphans) {
+      const named = new Set(actorIds);
+      const others = [...new Set(leases.map((l) => l.actorId).filter((id) => !named.has(id)))];
+      const known = new Set<string>();
+      if (others.length > 0) {
+        const [users, keys] = await Promise.all([
+          this.db.user.findMany({ where: { id: { in: others } }, select: { id: true } }),
+          this.db.apiKey.findMany({ where: { id: { in: others } }, select: { id: true } }),
+        ]);
+        for (const row of [...users, ...keys]) known.add(row.id);
+      }
+      ending = leases.filter(
+        (l) => named.has(l.actorId) || (!NO_ONES.has(l.actorId) && !known.has(l.actorId)),
+      );
+    }
+    return this.endEach(ending, reason, `user ${actorIds[0] ?? ''}`.trim());
+  }
+
+  /**
+   * Ends each of `leases`, as a release does (endLease): a waiting one leaves
+   * the queue (`expired`, its holds let go), an active one is `released` and
+   * each member's ports freed and its lease lock dropped. Each end is written
+   * only while the lease is still live, so one its client released or the
+   * sweeper ended meanwhile is left as it is. A lease whose release fails
+   * after its end was written still counts: it has ended, and the failure is
+   * logged. Then a grant pass runs.
+   */
+  private async endEach(leases: any[], reason: LeaseEndReason, whose: string): Promise<number> {
     let ended = 0;
     try {
       for (const lease of leases) {
@@ -817,7 +879,7 @@ export class LeaseService {
           // Ended by something else after it was read: nothing to do.
           if (err instanceof LeaseGone) continue;
           this.logger.warn(
-            `couldn't end lease ${lease.id} of a revoked grant: ${(err as Error)?.message ?? err}`,
+            `couldn't end lease ${lease.id} of ${whose} (${reason}): ${(err as Error)?.message ?? err}`,
           );
           // Its end was written before a member's release failed: it has ended.
           const row = await this.db.lease
@@ -829,7 +891,7 @@ export class LeaseService {
     } finally {
       if (ended > 0) this.queue.kick();
     }
-    if (ended > 0) this.logger.info(`ended ${ended} lease(s) of grant ${grantId} (${reason})`);
+    if (ended > 0) this.logger.info(`ended ${ended} lease(s) of ${whose} (${reason})`);
     return ended;
   }
 

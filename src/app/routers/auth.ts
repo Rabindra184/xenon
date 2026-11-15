@@ -111,10 +111,14 @@ export async function issueToken(
  * /auth/token passes its own rule (the grant must not be narrower than the
  * credential); xenon_session_capabilities, whose caller's scopes already are
  * its grant's, takes the default.
+ *
+ * `opts.grantId` (an agent's sign-in, xenon_session_capabilities) goes on as
+ * `gid`, so revoking the sign-in refuses this token too, at once, as it does
+ * the agent's access token (verifySessionTokenCredential).
  */
 export async function mintSessionToken(
   auth: { userId: string; scopes: string; teamId?: string | null; credentialExpiresAt?: number },
-  opts: { admin?: boolean } = {},
+  opts: { admin?: boolean; grantId?: string } = {},
 ): Promise<{ sessionToken: string; expiresIn: number }> {
   const expiresIn = mintedLifetimeSec(MCP_TTL_SEC, auth.credentialExpiresAt);
   const admin = opts.admin ?? grantsScope(auth.scopes, 'admin');
@@ -123,6 +127,7 @@ export async function mintSessionToken(
       sub: auth.userId,
       teamId: auth.teamId ?? null,
       scopes: admin ? 'admin,sessions' : 'sessions',
+      ...(opts.grantId ? { gid: opts.grantId } : {}),
     },
     { audience: 'xenon-session', ttlSeconds: expiresIn },
   );

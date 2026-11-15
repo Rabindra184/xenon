@@ -1796,6 +1796,42 @@
           }
         }
       },
+      "IdentityAgentGrant": {
+        "type": "object",
+        "description": "One browser sign-in of an agent. Never its tokens.",
+        "required": [
+          "id",
+          "clientName",
+          "scopes",
+          "createdAt",
+          "lastUsedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "clientName": {
+            "type": "string",
+            "description": "The agent's name, as it registered (or its client document's)."
+          },
+          "scopes": {
+            "type": "array",
+            "description": "The MCP scopes the user granted.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastUsedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the agent last refreshed its tokens."
+          }
+        }
+      },
       "IdentityConsentRequest": {
         "type": "object",
         "properties": {
@@ -15346,6 +15382,163 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/oauth/grants": {
+      "get": {
+        "operationId": "listOAuthGrants",
+        "summary": "List my signed-in agents",
+        "description": "The caller's own agent sign-ins that still work, most recently used first: one per\nbrowser sign-in (OAuth), however often the agent has refreshed it since. Any credential\nREST takes; the list is always the caller's own. With auth disabled there is no sign-in,\nand this is `404`.\n",
+        "tags": [
+          "Agent sign-in"
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's signed-in agents.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IdentityAgentGrant"
+                  }
+                },
+                "example": [
+                  {
+                    "id": "6f1c8e2a-4b3d-4a5e-9f70-1b2c3d4e5f60",
+                    "clientName": "Claude Code",
+                    "scopes": [
+                      "appium:use",
+                      "xenon:devices:read",
+                      "xenon:devices:lock"
+                    ],
+                    "createdAt": "2026-11-15T09:00:00.000Z",
+                    "lastUsedAt": "2026-11-15T10:00:00.000Z"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "revokeUserOAuthGrants",
+        "summary": "Revoke every signed-in agent of a user",
+        "description": "Admins only (an admin's dashboard sign-in, or a credential with the `admin` scope):\nrevokes every live agent sign-in of `userId`, as revoking each one does. Answers how many\nwere revoked. A user made Inactive or deleted has theirs revoked without this.\n",
+        "tags": [
+          "Agent sign-in"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "userId",
+            "required": true,
+            "description": "The user whose agents to sign out.",
+            "schema": {
+              "type": "string",
+              "example": "4f8d2a1b-3c6e-4b7a-8d9f-0e1c2b3a4d5e"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "How many sign-ins were revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "revoked"
+                  ],
+                  "properties": {
+                    "revoked": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "example": {
+                  "revoked": 2
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No `userId`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "invalid_request",
+                  "message": "Name the user: ?userId=<id>"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/oauth/grants/{grantId}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "grantId",
+          "required": true,
+          "description": "The sign-in, from the list.",
+          "schema": {
+            "type": "string",
+            "example": "6f1c8e2a-4b3d-4a5e-9f70-1b2c3d4e5f60"
+          }
+        }
+      ],
+      "delete": {
+        "operationId": "revokeOAuthGrant",
+        "summary": "Revoke a signed-in agent",
+        "description": "Signs the agent out at once: its access tokens are refused from the next request, on\n`/mcp`, the REST API and WebDriver commands alike, its refresh token stops working, and\nevery device lease it holds ends (`endReason` `grant_revoked`). The caller's own\nsign-in, or any user's for an admin. Another user's sign-in, an unknown one and one\nalready revoked are the same `404`.\n",
+        "tags": [
+          "Agent sign-in"
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "No such sign-in of the caller's (or, for an admin, of anyone's).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "not_found",
+                  "message": "Agent sign-in not found"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
           }
         }
       }

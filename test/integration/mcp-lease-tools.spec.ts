@@ -21,6 +21,7 @@ import { createRouter } from '../../src/app/index';
 import { JwtKeyService } from '../../src/services/token/JwtKeyService';
 import { resolveMcpGrant } from '../../src/services/token/mcpScopes';
 import { LeaseService, MCP_LEASE_DEFAULT_MS } from '../../src/services/lease/LeaseService';
+import { GrantStore } from '../../src/services/oauth/grantStore';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { PrismaDeviceStore } from '../../src/data-service/prisma-store';
 import { prisma } from '../../src/prisma';
@@ -41,7 +42,8 @@ describe('MCP lease tools (integration)', function () {
 
   const servers = loopbackServers();
   const stamp = Date.now();
-  const GRANT = `grant-${stamp}`;
+  /** The sign-in grant the bearer was issued under (a real one: a token's gid must name a live grant). */
+  let GRANT: string;
   const PHONE = {
     acquire: `mlt-acquire-${stamp}`,
     shape: `mlt-shape-${stamp}`,
@@ -124,6 +126,11 @@ describe('MCP lease tools (integration)', function () {
     // (resolveMcpGrant, as POST /auth/token mints them), plus the grant id the
     // OAuth sign-in will add (`gid`), which /auth/token doesn't mint.
     const grant = resolveMcpGrant('devices,read', ['xenon:devices:read', 'xenon:devices:lock']);
+    ({ grantId: GRANT } = await Container.get(GrantStore).create(
+      member.user.id,
+      'mcp-lease-tools-spec',
+      grant.granular,
+    ));
     bearer = await keys.sign(
       {
         sub: member.user.id,

@@ -37,6 +37,9 @@ const MEMBER_LOST = 'member_lost: ';
  * - `grant_revoked`: the sign-in grant an agent's lease was taken under was
  *   revoked (LeaseService.endLeasesOfGrant): `released` if it was active,
  *   `expired` if it was waiting.
+ * - `user_not_active`: an agent's lease taken under no grant (a key pair on
+ *   /xenon/mcp) whose user became Inactive or was deleted
+ *   (LeaseService.endAgentLeasesOf), likewise `released` or `expired`.
  */
 export type LeaseEndReason =
   | 'client_released'
@@ -45,6 +48,7 @@ export type LeaseEndReason =
   | 'past_end'
   | 'unreadable_request'
   | 'grant_revoked'
+  | 'user_not_active'
   | `member_lost: ${string}`;
 
 /** A group's end for a lost member: `member_lost: member 1 (udid) disconnected`. */

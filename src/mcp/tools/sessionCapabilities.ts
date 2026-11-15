@@ -105,7 +105,11 @@ export const sessionCapabilitiesTool = defineTool({
         ? await leaseCapabilities(caller, args.lockId, args.leaseToken)
         : {};
 
-    const { sessionToken } = await mintSessionToken(caller.auth);
+    // Under the caller's sign-in grant, so revoking it stops the session's commands too.
+    const { sessionToken } = await mintSessionToken(
+      caller.auth,
+      caller.grantId ? { grantId: caller.grantId } : {},
+    );
     const options: Record<string, any> = { ...(alwaysMatch[XE_OPTIONS] ?? {}), sessionToken };
     if (args.lockId && args.leaseToken) {
       options.leaseId = args.lockId;

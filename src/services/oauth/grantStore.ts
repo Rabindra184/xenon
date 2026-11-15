@@ -1,7 +1,8 @@
 import { createHash, randomBytes, randomUUID } from 'crypto';
-import { Service } from 'typedi';
+import { Container, Service } from 'typedi';
 import { prisma, prismaTransactions } from '../../prisma';
 import log from '../../logger';
+import { RevokedGrants } from './revokedGrants';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const DEFAULT_REFRESH_IDLE_DAYS = 30;
@@ -121,7 +122,7 @@ function summary(row: GrantRow): GrantSummary {
  *   (XENON_MCP_REFRESH_IDLE_DAYS, XENON_MCP_REFRESH_MAX_DAYS, read each time).
  *
  * `revoke` is the one way a grant is revoked; what else must happen then
- * (its leases, the access-token check) hooks there.
+ * (its leases, the access-token check) happens there.
  */
 @Service()
 export class GrantStore {
@@ -242,16 +243,38 @@ export class GrantStore {
     return { ...summary(grant), spent: row.rotatedFromId !== null };
   }
 
-  /** Revoke a grant, named by any of its rows, with every row of it. Nothing for an unknown id. */
+  /**
+   * Revoke a grant, named by any of its rows, with every row of it. Nothing
+   * for an unknown id. Every revoke comes here (the grants routes, a replayed
+   * code or refresh token, an agent's own revocation, its user leaving), so
+   * here is where it takes effect:
+   *
+   * - its access tokens are refused at once on this server (RevokedGrants,
+   *   told before the write, so no check in flight can call it live after);
+   * - its agent's leases end (`grant_revoked`, LeaseService.endLeasesOfGrant).
+   *   A lease that can't be ended is logged and the revoke stands: the lease
+   *   still ends at its own `expiresAt`, and its agent can no longer use it.
+   *
+   * Both run even when the grant was revoked already, so a revoke that failed
+   * part way can be sent again.
+   */
   async revoke(grantId: string, by: string): Promise<void> {
     const row = (await prisma.mcpGrant.findUnique({ where: { id: grantId } })) as GrantRow | null;
     if (!row) return;
     const id = row.rotatedFromId ?? row.id;
+    Container.get(RevokedGrants).revoked(id);
     const r = await prisma.mcpGrant.updateMany({
       where: { OR: [{ id }, { rotatedFromId: id }], revokedAt: null },
       data: { revokedAt: new Date() },
     });
     if (r.count > 0) this.log.info(`revoked agent sign-in ${id} (${by})`);
+    try {
+      // Loaded here, not imported: LeaseService imports most of the server.
+      const { LeaseService } = await import('../lease/LeaseService');
+      await Container.get(LeaseService).endLeasesOfGrant(id, 'grant_revoked');
+    } catch (err: any) {
+      this.log.warn(`could not end the leases of revoked sign-in ${id}: ${err?.message ?? err}`);
+    }
   }
 
   /** Revoke every live grant of a user, each through `revoke`. Answers how many. */
