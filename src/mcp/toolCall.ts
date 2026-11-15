@@ -6,24 +6,11 @@ import { EventLogService } from '../services/EventLogService';
 import { admit } from '../middleware/rateLimitMiddleware';
 import type { McpCaller } from './mcpCredential';
 import type { ApiAnswer } from './invokeApi';
+import { ToolRefusal } from './toolRefusal';
 
 const logger = log.scope('McpToolCall');
 
-/**
- * A tool's refusal, carrying what REST answered: its `error` code and
- * message, given to the agent as a tool error (runTool).
- */
-export class ToolRefusal extends Error {
-  constructor(
-    readonly error: unknown,
-    message: string,
-    /** REST's status; 5xx is a failure, anything else a refusal. */
-    readonly status: number,
-  ) {
-    super(message);
-    this.name = 'ToolRefusal';
-  }
-}
+export { ToolRefusal };
 
 /**
  * The body of a REST answer that worked; a ToolRefusal with REST's own

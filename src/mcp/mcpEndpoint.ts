@@ -78,7 +78,7 @@ async function handlePost(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const server = serverFor(caller);
+  const server = serverFor({ ...caller, origin: publicOrigin(req) });
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,

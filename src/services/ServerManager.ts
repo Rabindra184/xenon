@@ -604,6 +604,8 @@ export class ServerManager {
     cliArgs: ServerArgs,
     pluginArgs: IPluginArgs,
   ) {
+    // An MCP tool's WebDriver command runs through this app (invokeWebDriver).
+    Container.get(PluginContext).expressApp = expressApp;
     expressApp.use(
       '/xenon',
       createRouter(pluginArgs, {

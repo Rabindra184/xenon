@@ -9,6 +9,9 @@ import {
   releaseDeviceTool,
 } from './tools/devices';
 import { healingEventsTool, selectorHealthTool } from './tools/analytics';
+import { startRecordingTool, stopRecordingTool } from './tools/recordings';
+import { executeScriptTool } from './tools/execute';
+import { sessionCapabilitiesTool } from './tools/sessionCapabilities';
 
 /**
  * Every tool, in the order they are listed. The tools import nothing of this
@@ -23,6 +26,10 @@ const TOOLS: readonly XenonTool[] = [
   extendDeviceTool,
   selectorHealthTool,
   healingEventsTool,
+  startRecordingTool,
+  stopRecordingTool,
+  executeScriptTool,
+  sessionCapabilitiesTool,
 ];
 
 /** Every tool's name, as `/capabilities` reports them. */

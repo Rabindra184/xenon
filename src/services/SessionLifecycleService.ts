@@ -38,7 +38,7 @@ import {
   getXenonCapabilities,
   XENON_CAPABILITIES,
 } from '../XenonCapabilityManager';
-import { resolveSessionIdentity } from './session/sessionIdentity';
+import { resolveSessionIdentity, sessionTokenGrantsSessions } from './session/sessionIdentity';
 import { leaseIdOf, sessionLeaseIdOf } from './lease/leaseSessionCaps';
 import { SessionCredentials, takeSessionCredentials } from './session/sessionCredentials';
 import { capsForNode } from './session/nodeCreateCaps';
@@ -111,18 +111,6 @@ type LeaseCredential =
   | { kind: 'api-key'; scopes: string; user: CredentialOwner; teamId: string | null }
   | { kind: 'session-token'; scopes: string; user: CredentialOwner; teamId: string | null }
   | { kind: 'none' };
-
-/**
- * A session token admits a session only with the `sessions` scope, as a key
- * pair does. Tokens minted before this check carry no `scopes` claim, and
- * POST /auth/token gave one to any credential, a read-only one included:
- * they are refused too.
- */
-function sessionTokenGrantsSessions(scopes: unknown): boolean {
-  if (typeof scopes !== 'string') return false;
-  const owned = scopes.split(',').map((s) => s.trim());
-  return owned.includes('sessions') || owned.includes('admin');
-}
 
 const SESSION_TOKEN_LACKS_SCOPE =
   'session rejected: xe:options.sessionToken carries no `sessions` scope; tokens minted by ' +
@@ -974,6 +962,14 @@ export class SessionLifecycleService {
       this.logger.warn('Rejecting session: the key pair in the hub URL is not valid');
       throw new BasicCredentialRefused('invalid');
     }
+    // A session token as the hub URL's password (user `xenon-session`): what
+    // xenon_session_capabilities gives an agent with per-command auth on.
+    // It stands for `xe:options.sessionToken` when the caps carry none (the
+    // capabilities' own credential is present first, so it decides). Like a
+    // Basic key pair, one that doesn't verify refuses the create (below).
+    const basicToken =
+      basic?.kind === 'session-token' && !credentials.sessionToken ? basic.token : undefined;
+    if (basicToken) credentials = { ...credentials, sessionToken: basicToken };
 
     // The session token, verified once for both the gate and attribution, by
     // REST's rule too: a live signature and an ACTIVE subject, looked up now.
@@ -988,9 +984,17 @@ export class SessionLifecycleService {
     // is not that: it refuses the create here, as a key whose owner can't be
     // looked up does, rather than run the session with no owner.
     if (!verifiedPair && credentials.sessionToken) {
-      await verifyToken(credentials.sessionToken).catch((err: unknown) => {
-        if (!isWrongSessionToken(err)) throw err;
-      });
+      const wrong = await verifyToken(credentials.sessionToken).then(
+        () => false,
+        (err: unknown) => {
+          if (!isWrongSessionToken(err)) throw err;
+          return true;
+        },
+      );
+      if (wrong && basicToken) {
+        this.logger.warn('Rejecting session: the session token in the hub URL is not valid');
+        throw new BasicCredentialRefused('invalid-session-token');
+      }
     }
 
     const { assertSessionTokenGate, sessionTokenGateEnabled } = await import('./sessionTokenGate');

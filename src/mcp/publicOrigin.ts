@@ -1,5 +1,7 @@
 import type { Request } from 'express';
+import { Container } from 'typedi';
 import { publicServerBase } from '../services/publicUrl';
+import { PluginContext } from '../PluginContext';
 
 /** Where this server's MCP endpoint is, under its origin. */
 export const MCP_PATH = '/xenon/mcp';
@@ -28,6 +30,17 @@ export function publicOrigin(req: Request): string {
   const configured = publicServerBase();
   if (configured) return configured;
   return `${req.protocol}://${requestHost(req)}`;
+}
+
+/**
+ * Where a tool's URLs point: the origin the caller reached `/xenon/mcp` at,
+ * else XENON_PUBLIC_URL's, else this server on loopback (a tool called with
+ * no endpoint in between, as a spec calls one).
+ */
+export function callerOrigin(caller: { origin?: string }): string {
+  return (
+    caller.origin ?? publicServerBase() ?? `http://127.0.0.1:${Container.get(PluginContext).port}`
+  );
 }
 
 /** This server's MCP endpoint, as an agent names it (the OAuth `resource`). */

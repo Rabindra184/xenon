@@ -47,6 +47,10 @@ describe('capabilities payload', () => {
           'xenon_extend_device',
           'xenon_selector_health',
           'xenon_healing_events',
+          'xenon_start_recording',
+          'xenon_stop_recording',
+          'xenon_execute_script',
+          'xenon_session_capabilities',
         ],
       },
     });
@@ -65,6 +69,10 @@ describe('capabilities payload', () => {
         'xenon_extend_device',
         'xenon_selector_health',
         'xenon_healing_events',
+        'xenon_start_recording',
+        'xenon_stop_recording',
+        'xenon_execute_script',
+        'xenon_session_capabilities',
       ],
     });
   });

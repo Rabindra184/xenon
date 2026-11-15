@@ -1,6 +1,9 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import sinon from 'sinon';
 import { Container } from 'typedi';
 import request from '../helpers/loopbackRequest';
@@ -12,6 +15,7 @@ import { SessionLifecycleService } from '../../src/services/SessionLifecycleServ
 import { takeSessionCredentials } from '../../src/services/session/sessionCredentials';
 import { ApiKeyService } from '../../src/services/ApiKeyService';
 import { UserService } from '../../src/services/UserService';
+import { JwtKeyService } from '../../src/services/token/JwtKeyService';
 import { config } from '../../src/config';
 import { saveRegistrations } from '../helpers/container-registration';
 
@@ -237,6 +241,59 @@ describe('The key pair in the hub URL (Basic auth)', function () {
       config.authDisabled = true;
       const out = await authorize(undefined, 'Basic garbage');
       expect(out.apiKeyId ?? null).to.equal(null);
+    });
+
+    // What xenon_session_capabilities gives an agent with per-command auth on:
+    // `http://xenon-session:<session token>@host/wd/hub`.
+    describe('a session token in the hub URL (user xenon-session)', () => {
+      let keyDir: string;
+      let keys: JwtKeyService;
+      let restoreKeys: () => void;
+
+      before(async () => {
+        keyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-basic-create-'));
+        keys = new JwtKeyService();
+        await keys.init(keyDir);
+      });
+      after(() => fs.rmSync(keyDir, { recursive: true, force: true }));
+      beforeEach(() => {
+        restoreKeys = saveRegistrations(JwtKeyService);
+        Container.set(JwtKeyService, keys);
+      });
+      afterEach(() => restoreKeys());
+
+      const sessionToken = (sub: string, ttlSeconds = 600) =>
+        keys.sign(
+          { sub, teamId: null, scopes: 'sessions' },
+          { audience: 'xenon-session', ttlSeconds },
+        );
+
+      it('attributes the session to its user, as xe:options.sessionToken would', async () => {
+        const out = await authorize(
+          undefined,
+          basicHeader('xenon-session', await sessionToken('alice')),
+        );
+        expect(out.userId).to.equal('alice');
+        expect(out.apiKeyId ?? null).to.equal(null);
+      });
+
+      it('refuses one that does not verify, with BasicCredentialRefused', async () => {
+        let thrown: any;
+        await authorize(
+          undefined,
+          basicHeader('xenon-session', await sessionToken('alice', -120)),
+        ).catch((e: any) => (thrown = e));
+        expect(thrown).to.be.instanceOf(BasicCredentialRefused);
+        expect(thrown.reason).to.equal('invalid-session-token');
+      });
+
+      it("lets the capabilities' own session token decide when there is one", async () => {
+        const out = await authorize(
+          { sessionToken: await sessionToken('bob') },
+          basicHeader('xenon-session', await sessionToken('alice')),
+        );
+        expect(out.userId).to.equal('bob');
+      });
     });
   });
 });

@@ -1,8 +1,15 @@
 import { createHash } from 'crypto';
 import type { IncomingHttpHeaders } from 'http';
 import { canOverrideLease } from '../services/device-access/leaseOverride';
-import { verifyBearerCredential, verifyKeyPairCredential } from './verifyCredential';
+import {
+  verifyBearerCredential,
+  verifyKeyPairCredential,
+  verifySessionTokenCredential,
+  isWrongSessionToken,
+} from './verifyCredential';
 import { readBasicCredential } from './basicCredential';
+import { sessionTokenGrantsSessions } from '../services/session/sessionIdentity';
+import type { McpCaller } from '../mcp/mcpCredential';
 
 /**
  * Who is calling a WebDriver command, for the per-command check (commandAuth.ts).
@@ -12,7 +19,11 @@ import { readBasicCredential } from './basicCredential';
  * (see ACCEPTED_BEARER_AUDIENCES). The same pair also comes as
  * `Authorization: Basic base64(key:token)`, what a client sends for a hub URL
  * with the key and token in it (basicCredential.ts); a Basic header that
- * can't be read is `unreadable`, and refused like a pair that doesn't verify. Both are verified by the helpers
+ * can't be read is `unreadable`, and refused like a pair that doesn't verify.
+ * A Basic header whose user is `xenon-session` carries a `xenon-session`
+ * token as its password (what xenon_session_capabilities puts in the URL it
+ * gives an agent): checked as session create checks one, and judged as a
+ * Bearer token is. All of them are verified by the helpers
  * authMiddleware uses, so an inactive user, a revoked or expired key, and a
  * bad or expired token are refused here exactly as they are on /xenon/api.
  *
@@ -24,6 +35,7 @@ export type PresentedCredential =
   | { kind: 'none' }
   | { kind: 'key-pair'; accessKey: string; token: string }
   | { kind: 'bearer'; token: string }
+  | { kind: 'session-token'; token: string }
   | { kind: 'unreadable' };
 
 export interface CommandCaller {
@@ -56,8 +68,27 @@ export function readPresentedCredential(headers: IncomingHttpHeaders): Presented
   if (basic.kind === 'pair') {
     return { kind: 'key-pair', accessKey: basic.accessKey, token: basic.token };
   }
+  if (basic.kind === 'session-token') return { kind: 'session-token', token: basic.token };
   if (basic.kind === 'unreadable') return { kind: 'unreadable' };
   return { kind: 'none' };
+}
+
+/**
+ * The caller of a WebDriver command an MCP tool runs in process
+ * (invokeWebDriver): `/xenon/mcp` verified it with REST's own verifiers, so
+ * nothing is read from the request. An override admin by canOverrideLease's
+ * rule, from the scopes and role REST holds for it.
+ */
+export function commandCallerOf(mcp: McpCaller): CommandCaller {
+  const { auth } = mcp;
+  return {
+    userId: auth.userId,
+    overrideAdmin: canOverrideLease({
+      kind: 'api-key',
+      scopes: auth.scopes ?? '',
+      user: { role: auth.role },
+    }),
+  };
 }
 
 /**
@@ -84,6 +115,7 @@ export const CALLER_CACHE_MAX_ENTRIES = 1_000;
 interface VerifierDeps {
   verifyKeyPair: typeof verifyKeyPairCredential;
   verifyBearer: typeof verifyBearerCredential;
+  verifySessionToken: typeof verifySessionTokenCredential;
   now: () => number;
   ttlMs: number;
   maxEntries: number;
@@ -112,6 +144,7 @@ export class CommandCallerVerifier {
     this.deps = {
       verifyKeyPair: verifyKeyPairCredential,
       verifyBearer: verifyBearerCredential,
+      verifySessionToken: verifySessionTokenCredential,
       now: Date.now,
       ttlMs: CALLER_CACHE_TTL_MS,
       maxEntries: CALLER_CACHE_MAX_ENTRIES,
@@ -154,6 +187,8 @@ export class CommandCallerVerifier {
       };
     }
 
+    if (credential.kind === 'session-token') return this.checkSessionToken(credential.token);
+
     const out = await this.deps.verifyBearer(credential.token);
     if (!out) return null;
     // A Bearer token carries the scopes of the credential that minted it
@@ -165,6 +200,37 @@ export class CommandCallerVerifier {
         userId: out.user.id,
         overrideAdmin: canOverrideLease({
           kind: 'api-key',
+          scopes: String(out.payload.scopes ?? ''),
+          user: out.user,
+        }),
+      },
+      credentialExpiresAt: typeof out.payload.exp === 'number' ? out.payload.exp * 1000 : undefined,
+    };
+  }
+
+  /**
+   * A `xenon-session` token, by session create's rule
+   * (verifySessionTokenCredential): a live signature, audience and lifetime,
+   * and an ACTIVE subject. It must carry the `sessions` scope, as it must to
+   * create a session. Whether it overrides is canOverrideLease's session-token
+   * rule, on its user's role now.
+   */
+  private async checkSessionToken(
+    token: string,
+  ): Promise<{ caller: CommandCaller; credentialExpiresAt?: number } | null> {
+    let out: Awaited<ReturnType<typeof verifySessionTokenCredential>>;
+    try {
+      out = await this.deps.verifySessionToken(token);
+    } catch (err) {
+      if (isWrongSessionToken(err)) return null;
+      throw err;
+    }
+    if (!sessionTokenGrantsSessions(out.payload.scopes)) return null;
+    return {
+      caller: {
+        userId: out.user.id,
+        overrideAdmin: canOverrideLease({
+          kind: 'session-token',
           scopes: String(out.payload.scopes ?? ''),
           user: out.user,
         }),
@@ -192,6 +258,6 @@ function cacheKey(
   const material =
     credential.kind === 'key-pair'
       ? `key-pair\0${credential.accessKey}\0${credential.token}`
-      : `bearer\0${credential.token}`;
+      : `${credential.kind}\0${credential.token}`;
   return createHash('sha256').update(material).digest('hex');
 }

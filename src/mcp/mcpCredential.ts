@@ -25,6 +25,12 @@ export interface McpCaller {
    * scopes say what it may do (mcpScopesAllowedBy).
    */
   mcpScopes?: string[];
+  /**
+   * The origin the agent reached this server at (publicOrigin of its
+   * `/xenon/mcp` request): where the URLs a tool hands out point, such as
+   * `xenon_session_capabilities`' WebDriver URL. Set by the endpoint.
+   */
+  origin?: string;
 }
 
 /**
