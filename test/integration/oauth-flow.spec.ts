@@ -264,6 +264,20 @@ describe('agent sign-in (OAuth) end to end', () => {
     const me = await request(origin).get('/xenon/api/auth/me').set('authorization', bearer);
     expect(me.status, JSON.stringify(me.body)).to.equal(200);
     expect(me.body.role).to.equal('ADMIN');
+    const client = new Client({ name: 'oauth-flow-spec', version: '1.0.0' });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(mcpUrl), { authProvider: agent }),
+    );
+    try {
+      const result = (await client.callTool({ name: 'xenon_lab_info', arguments: {} })) as {
+        content: Array<{ type: string; text: string }>;
+      };
+      const info = JSON.parse(result.content[0].text);
+      expect(info.role).to.equal('ADMIN');
+      expect(info.seesEveryTeam).to.equal(true);
+    } finally {
+      await client.close();
+    }
   });
 
   it('the consent request names the agent, the hub and the scopes', async () => {

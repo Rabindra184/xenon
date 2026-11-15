@@ -56,7 +56,8 @@ const DESCRIPTION =
   '(xe: and xenon: are interchangeable):\n' +
   '  Vision/interaction: xe:smartTap {text?,icon?,description?,index?,takeANewScreenShot?}; ' +
   'xe:omniClick {text,index?,takeANewScreenShot?}; xe:visualTap {icon?,description?,takeANewScreenShot?}; ' +
-  'xe:uiInventory {takeANewScreenShot?,maxItems?}; xe:analyzeScreen (no args); ' +
+  'xe:uiInventory {takeANewScreenShot?,maxItems?} (or xe:uiScanExport); ' +
+  'xe:analyzeScreen (no args; or xe:omniScan); ' +
   'xe:assertVisualState "<instruction>" | {instruction}.\n' +
   '  Autowait: xe:setAutowaitProperties {enabled?,timeoutMs?,intervalBetweenAttemptsMs?,excludeEnabledCheck?}; ' +
   'xe:getAutowaitProperties (no args).\n' +

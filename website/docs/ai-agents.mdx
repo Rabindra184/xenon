@@ -16,7 +16,7 @@ Xenon Studio, the IDE extension made for Xenon, isn't publicly available yet. It
 
 ## Quick start
 
-On the dashboard, open **AI agents** in the sidebar. It shows the command for each agent with your lab's address filled in, and a **Copy** button for each. The address is your hub's origin followed by `/xenon/mcp`, such as `https://xenon.example.com/xenon/mcp`. If the hub has `XENON_PUBLIC_URL` set, it is that URL's origin: an agent must use exactly the address the hub names itself by.
+On the dashboard, open **AI agents** in the sidebar. It shows each agent's command, or the entry for its settings file, with your lab's address filled in, and a **Copy** button for each. The address is your hub's origin followed by `/xenon/mcp`, such as `https://xenon.example.com/xenon/mcp`. If the hub has `XENON_PUBLIC_URL` set, it is that URL's origin: an agent must use exactly the address the hub names itself by.
 
 <Tabs groupId="agent">
 <TabItem value="claude-code" label="Claude Code" default>
@@ -203,7 +203,7 @@ Each tool needs one MCP scope. A tool outside the scopes the agent holds isn't l
 | `appium:use` | `xenon_session_capabilities` | Start Appium sessions as you | `sessions` or `admin` |
 | `xenon:analytics:read` | `xenon_selector_health`, `xenon_healing_events` | Read [Selector Health](./selector-health.md) and a session's heals | `read` or `admin` |
 | `xenon:recordings` | `xenon_start_recording`, `xenon_stop_recording` | Start and stop [recordings](./recordings.md) | `devices` or `admin` |
-| `xenon:execute` | `xenon_execute_script` | Run Xenon's own commands on a session you own: tap by text or icon, list and check what's on screen, wait settings, network mocks and the session's captured traffic, the session's name, status and tags | `sessions` or `admin` |
+| `xenon:execute` | `xenon_execute_script` | Run Xenon's own commands on a session you own: tap by text or icon, list and check what's on screen, wait settings, network mocks and the session's captured traffic, the session's network profile, the session's name, status and tags | `sessions` or `admin` |
 
 - **Through the browser,** the agent asks for scopes and gets those your role allows. Every role allows all six, so the consent page lists what the agent asked for. An agent that asks for none gets `appium:use` and `xenon:devices:read`. None of them brings the `admin` scope, for an admin's agent too.
 - **With an `xenon-mcp` token** from `POST /auth/token`, the agent has the token's scopes. With no `scopes` in the request, the token gets `appium:use` and `xenon:devices:read`, as far as your credential allows them. `xenon:execute` is given only when asked for.
