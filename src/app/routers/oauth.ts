@@ -35,7 +35,6 @@ import { ALL_GRANULAR_SCOPES } from '../../services/token/mcpScopes';
 import { UserSessionService } from '../../services/UserSessionService';
 import { dashboardSessionIdOf } from '../../middleware/authMiddleware';
 import { GrantStore } from '../../services/oauth/grantStore';
-import { resolveActor } from '../../services/device-access/actor';
 import { roleGuard } from '../../middleware/roleGuard';
 import { scopeGuard } from '../../middleware/scopeGuard';
 
@@ -476,13 +475,26 @@ const GRANT_NOT_FOUND = { error: 'not_found', message: 'Agent sign-in not found'
  * - `GET /`: the caller's live sign-ins, most recently used first:
  *   `[{ id, clientName, scopes, createdAt, lastUsedAt }]`.
  * - `DELETE /:id`: revoke one (GrantStore.revoke: its tokens stop at once,
- *   its leases end). The caller's own, or any user's for an admin
- *   (resolveActor). Anything else, an unknown or already revoked one, or one
+ *   its leases end). The caller's own, or any user's for an admin holding
+ *   the `admin` scope (holdsAdminScope, the bulk route's rule). Anything else, an unknown or already revoked one, or one
  *   named by a spent refresh token's row, is the same `404`, so nobody learns
  *   whether another user's grant exists.
  * - `DELETE /?userId=`: admins only, every live sign-in of that user:
  *   `{ revoked }`.
  */
+/**
+ * An ADMIN or SUPER_ADMIN whose credential carries the `admin` scope: what
+ * `roleGuard('ADMIN')` plus `scopeGuard(['admin'])` let through, as the bulk
+ * route asks. A SUPER_ADMIN's read-only token is not an admin here.
+ */
+function holdsAdminScope(req: Request): boolean {
+  const role = req.auth?.role;
+  if (role !== 'ADMIN' && role !== 'SUPER_ADMIN') return false;
+  return String(req.auth?.scopes ?? '')
+    .split(',')
+    .some((s) => s.trim() === 'admin');
+}
+
 function grantsRouter(): Router {
   const grants = express.Router();
   grants.use(signInServed);
@@ -515,7 +527,7 @@ function grantsRouter(): Router {
     const grant = await store.find(req.params.id);
     const userId = req.auth!.userId;
     const own = grant?.userId === userId;
-    if (!grant || grant.revokedAt || (!own && !resolveActor(req).isAdmin)) {
+    if (!grant || grant.revokedAt || (!own && !holdsAdminScope(req))) {
       return res.status(404).json(GRANT_NOT_FOUND);
     }
     await store.revoke(grant.id, own ? 'user' : `admin ${userId}`);

@@ -6,6 +6,7 @@ import { UserService } from '../../services/UserService';
 import { prisma } from '../../prisma';
 import { AUTH_DISABLED_USER_ID, resolveEffectiveUserId } from './profileIdentity';
 import { keyExpiryWithin } from '../../services/token/mintedLifetime';
+import { refuseGrantBound } from '../../middleware/refuseGrantBound';
 
 /** The scopes a token gets when none are asked for. */
 const ROLE_DEFAULT_SCOPES: Record<string, Scope[]> = {
@@ -93,7 +94,7 @@ export function profileRouter(): Router {
   // scopes, so it takes the person themselves (a dashboard sign-in) or a
   // credential with the admin scope. Through 2.14 any credential could, a
   // read-only token included, and cut off every one of its owner's clients.
-  r.post('/access-key/rotate', async (req, res) => {
+  r.post('/access-key/rotate', refuseGrantBound, async (req, res) => {
     const auth = requireAuth(req, res);
     if (!auth) return;
     const credentialScopes = String(auth.scopes ?? '')
@@ -133,7 +134,7 @@ export function profileRouter(): Router {
     );
   });
 
-  r.post('/tokens', async (req, res) => {
+  r.post('/tokens', refuseGrantBound, async (req, res) => {
     const auth = requireAuth(req, res);
     if (!auth) return;
     const userId = await effectiveUserId(auth.userId);

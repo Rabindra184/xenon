@@ -41,6 +41,10 @@ declare global {
         // expires and for a dashboard sign-in, which renews itself. What the
         // caller mints (POST /auth/token, POST /profile/tokens) ends no later.
         credentialExpiresAt?: number;
+        // kind 'bearer' only: the agent's sign-in grant the token was issued
+        // under (its `gid`). Such a caller makes no credentials
+        // (refuseGrantBound), and a lease it takes is the grant's.
+        grantId?: string;
       };
       // BACK-COMPAT: existing call sites still read `req.apiKey`. Keep this
       // until every reference has been migrated to req.auth.

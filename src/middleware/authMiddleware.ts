@@ -7,7 +7,7 @@ import { StreamTicketService } from '../services/token/StreamTicketService';
 import { AppDownloadTicketService } from '../services/token/AppDownloadTicketService';
 import { config } from '../config';
 import { computeTeamIds } from '../services/device-access/callerTeamIds';
-import { verifyBearerCredential, verifyKeyPairCredential } from './verifyCredential';
+import { grantIdOf, verifyBearerCredential, verifyKeyPairCredential } from './verifyCredential';
 import { PluginContext } from '../PluginContext';
 import {
   HUB_TOKEN_HEADER,
@@ -74,7 +74,9 @@ export async function bearerAuth(
     userId: user.id,
     apiKeyTeamId: (payload.teamId as string | null) ?? null,
   });
+  const grantId = grantIdOf(payload);
   return {
+    ...(grantId !== undefined ? { grantId } : {}),
     kind: 'bearer',
     userId: user.id,
     role: user.role as any,

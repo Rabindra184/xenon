@@ -277,11 +277,18 @@ export class GrantStore {
     }
   }
 
-  /** Revoke every live grant of a user, each through `revoke`. Answers how many. */
+  /**
+   * Revoke every unrevoked grant of a user, each through `revoke`, past its
+   * limits or not: one that can no longer refresh may still have an access
+   * token of its last hour, and leases. Answers how many.
+   */
   async revokeAllOf(userId: string, by = 'all_of_user'): Promise<number> {
-    const live = await this.listOf(userId);
-    for (const grant of live) await this.revoke(grant.id, by);
-    return live.length;
+    const rows = (await prisma.mcpGrant.findMany({
+      where: { userId, rotatedFromId: null, revokedAt: null },
+      select: { id: true },
+    })) as Array<{ id: string }>;
+    for (const row of rows) await this.revoke(row.id, by);
+    return rows.length;
   }
 
   /** A user's live grants, most recently used first. */

@@ -2098,8 +2098,9 @@ paths:
         Signs the agent out at once: its access tokens are refused from the next request, on
         `/mcp`, the REST API and WebDriver commands alike, its refresh token stops working, and
         every device lease it holds ends (`endReason` `grant_revoked`). The caller's own
-        sign-in, or any user's for an admin. Another user's sign-in, an unknown one and one
-        already revoked are the same `404`.
+        sign-in, or any user's for an admin whose credential carries the `admin` scope (as the
+        bulk revoke asks). Another user's sign-in, an unknown one and one already revoked are
+        the same `404`.
       tags:
         - Agent sign-in
       responses:

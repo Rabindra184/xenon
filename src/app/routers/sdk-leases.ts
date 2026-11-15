@@ -80,15 +80,21 @@ function readGetWait(raw: unknown): number | null {
 const DEFAULT_LEASE_MS = 30 * 60 * 1000;
 
 /**
- * What an MCP tool's lease is (an agent's: CreateLeaseRequest.heartbeatFree),
- * from the request's MCP context alone, which no network request can set
- * (invokeApi.ts). A body's `heartbeatFree` or `grantId` is never read. A tool
- * call with no grant (a key pair, auth disabled) is still heartbeat-free.
+ * What an agent's lease is. An MCP tool's (the request's MCP context, which
+ * no network request can set: invokeApi.ts) is heartbeat-free
+ * (CreateLeaseRequest.heartbeatFree), with or without a grant (a key pair,
+ * auth disabled). Any lease a caller signed in under a grant takes, through a
+ * tool or plain REST with the grant's token (`req.auth.grantId`), is the
+ * grant's, so revoking the grant ends it. A body's `heartbeatFree` or
+ * `grantId` is never read.
  */
 function agentLease(req: Request): { heartbeatFree?: true; grantId?: string } {
   const mcp = mcpContextOf(req);
-  if (!mcp) return {};
-  return { heartbeatFree: true, ...(mcp.grantId ? { grantId: mcp.grantId } : {}) };
+  const grantId = mcp?.grantId ?? req.auth?.grantId;
+  return {
+    ...(mcp ? { heartbeatFree: true as const } : {}),
+    ...(grantId ? { grantId } : {}),
+  };
 }
 
 /** The 410 body: today's, plus `reason` when a group ended for one. */

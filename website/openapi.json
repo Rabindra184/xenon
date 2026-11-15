@@ -15512,7 +15512,7 @@
       "delete": {
         "operationId": "revokeOAuthGrant",
         "summary": "Revoke a signed-in agent",
-        "description": "Signs the agent out at once: its access tokens are refused from the next request, on\n`/mcp`, the REST API and WebDriver commands alike, its refresh token stops working, and\nevery device lease it holds ends (`endReason` `grant_revoked`). The caller's own\nsign-in, or any user's for an admin. Another user's sign-in, an unknown one and one\nalready revoked are the same `404`.\n",
+        "description": "Signs the agent out at once: its access tokens are refused from the next request, on\n`/mcp`, the REST API and WebDriver commands alike, its refresh token stops working, and\nevery device lease it holds ends (`endReason` `grant_revoked`). The caller's own\nsign-in, or any user's for an admin whose credential carries the `admin` scope (as the\nbulk revoke asks). Another user's sign-in, an unknown one and one already revoked are\nthe same `404`.\n",
         "tags": [
           "Agent sign-in"
         ],

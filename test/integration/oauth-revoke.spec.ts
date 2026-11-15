@@ -24,7 +24,7 @@ import { resetOAuthRateLimits } from '../../src/app/routers/oauth';
 import { registerCommandAuth } from '../../src/app/registerCommandAuth';
 import { CommandCallerVerifier } from '../../src/middleware/commandCaller';
 import { JwtKeyService } from '../../src/services/token/JwtKeyService';
-import { resolveMcpGrant } from '../../src/services/token/mcpScopes';
+import { ALL_GRANULAR_SCOPES, resolveMcpGrant } from '../../src/services/token/mcpScopes';
 import { AuthCodes } from '../../src/services/oauth/authCodes';
 import { ClientStore } from '../../src/services/oauth/clientStore';
 import { GrantStore } from '../../src/services/oauth/grantStore';
@@ -169,6 +169,7 @@ describe("revoking an agent's sign-in", function () {
   /** A sign-in as the token route makes one: a code, exchanged once. */
   async function signIn(
     user: SeededUser,
+    scopes: readonly string[] = SCOPES,
   ): Promise<{ token: string; grantId: string; code: string; verifier: string }> {
     const pair = pkce();
     const code = Container.get(AuthCodes).issue({
@@ -176,7 +177,7 @@ describe("revoking an agent's sign-in", function () {
       clientId: client.client_id,
       redirectUri: REDIRECT,
       codeChallenge: pair.challenge,
-      scopes: SCOPES,
+      scopes: [...scopes],
       resource: `${origin}/xenon/mcp`,
     });
     const tokens = await provider.exchangeAuthorizationCode(
@@ -333,8 +334,9 @@ describe("revoking an agent's sign-in", function () {
     );
     expect(await statuses(bearer(token))).to.deep.equal([200, 200, 200]);
 
-    // Revoking every sign-in of the user leaves it as it was.
-    await signIn(member);
+    // Revoking every sign-in of the user leaves it as it was, and stops theirs.
+    const signedIn = await signIn(member);
+    expect(await statuses(bearer(signedIn.token))).to.deep.equal([200, 200, 200]);
     const all = await request(origin)
       .delete(`/xenon/api/oauth/grants?userId=${member.user.id}`)
       .set('cookie', admin.cookie)
@@ -342,6 +344,141 @@ describe("revoking an agent's sign-in", function () {
     expect(all.status, JSON.stringify(all.body)).to.equal(200);
     expect(all.body.revoked).to.be.at.least(1);
     expect(await statuses(bearer(token))).to.deep.equal([200, 200, 200]);
+    expect(await statuses(bearer(signedIn.token))).to.deep.equal([401, 401, 404]);
+  });
+
+  it("a grant's token can't make credentials that would outlive it: 403", async () => {
+    const asMember = bearer((await signIn(member)).token);
+    // An admin's full grant carries the admin scope, so the admin routes reach the check.
+    const asAdmin = bearer((await signIn(admin, ALL_GRANULAR_SCOPES)).token);
+    const calls: Array<[string, () => request.Test]> = [
+      [
+        'POST /auth/token (xenon-rest)',
+        () =>
+          request(origin)
+            .post('/xenon/api/auth/token')
+            .set(asMember)
+            .send({ audience: 'xenon-rest' }),
+      ],
+      [
+        'POST /auth/token (xenon-mcp)',
+        () =>
+          request(origin)
+            .post('/xenon/api/auth/token')
+            .set(asMember)
+            .send({ audience: 'xenon-mcp' }),
+      ],
+      [
+        'POST /profile/tokens',
+        () =>
+          request(origin).post('/xenon/api/profile/tokens').set(asMember).send({ name: 'agent' }),
+      ],
+      [
+        'POST /profile/access-key/rotate',
+        () => request(origin).post('/xenon/api/profile/access-key/rotate').set(asAdmin).send({}),
+      ],
+      [
+        'POST /apikeys',
+        () =>
+          request(origin)
+            .post('/xenon/api/apikeys')
+            .set(asAdmin)
+            .send({ name: 'k', scopes: ['read'] }),
+      ],
+      [
+        'POST /users',
+        () =>
+          request(origin)
+            .post('/xenon/api/users')
+            .set(asAdmin)
+            .send({ email: `agent-made-${stamp}@xenon.local`, name: 'Made', role: 'MEMBER' }),
+      ],
+      [
+        'POST /users/:id/reset-link',
+        () =>
+          request(origin)
+            .post(`/xenon/api/users/${member.user.id}/reset-link`)
+            .set(asAdmin)
+            .send({}),
+      ],
+    ];
+    for (const [what, call] of calls) {
+      const res = await call();
+      expect(res.status, `${what}: ${JSON.stringify(res.body)}`).to.equal(403);
+      expect(res.body.error, what).to.equal('agent_sign_in_cannot_make_credentials');
+    }
+    expect(await prisma.apiKey.count({ where: { name: { in: ['agent', 'k'] } } })).to.equal(0);
+
+    // A token without gid mints as before.
+    const plain = await keys.sign(
+      { sub: member.user.id, scopes: 'devices,read' },
+      { audience: 'xenon-rest', ttlSeconds: 600 },
+    );
+    const minted = await request(origin)
+      .post('/xenon/api/auth/token')
+      .set(bearer(plain))
+      .send({ audience: 'xenon-rest' });
+    expect(minted.status, JSON.stringify(minted.body)).to.equal(200);
+  });
+
+  it("a lease a grant's token takes over REST is the grant's, and ends with it", async () => {
+    const { token, grantId } = await signIn(member);
+    const udid = await phone();
+    const res = await request(origin)
+      .post('/xenon/api/sdk/leases')
+      .set(bearer(token))
+      .send({ filters: { platform: 'android', udid }, durationMs: 600_000, heartbeatSeconds: 30 });
+    expect(res.status, JSON.stringify(res.body)).to.equal(201);
+    const row = await leaseRow(res.body.leaseId);
+    expect(row.grantId).to.equal(grantId);
+    expect(row.heartbeatFree ?? false).to.equal(false);
+
+    expect((await revoke(grantId, member)).status).to.equal(204);
+    expect((await leaseRow(res.body.leaseId)).endReason).to.equal('grant_revoked');
+  });
+
+  it("revoking all of a user's sign-ins includes one past its limits whose last token still works", async () => {
+    const { token, grantId } = await signIn(other);
+    const leaseId = await acquire(bearer(token), await phone());
+    // Begun 91 days ago: past XENON_MCP_REFRESH_MAX_DAYS (90), so it can't
+    // refresh, but its last hour-long access token is still good.
+    await prisma.mcpGrant.update({
+      where: { id: grantId },
+      data: { createdAt: new Date(Date.now() - 91 * 24 * 60 * 60 * 1000) },
+    });
+    expect((await mcp(bearer(token))).status).to.equal(200);
+
+    const all = await request(origin)
+      .delete(`/xenon/api/oauth/grants?userId=${other.user.id}`)
+      .set('cookie', admin.cookie)
+      .set('origin', origin);
+    expect(all.status).to.equal(200);
+    expect((await grantRow(grantId)).revokedAt).to.be.instanceOf(Date);
+    expect(await statuses(bearer(token))).to.deep.equal([401, 401, 404]);
+    expect((await leaseRow(leaseId)).endReason).to.equal('grant_revoked');
+  });
+
+  it("revoking another user's sign-in takes the admin scope, a SUPER_ADMIN's included", async () => {
+    const theirs = await signIn(other);
+    const root = await seedUser('SUPER_ADMIN', { name: 'Root' });
+    const readOnly = await keys.sign(
+      { sub: root.user.id, scopes: 'read' },
+      { audience: 'xenon-rest', ttlSeconds: 600 },
+    );
+    const refused = await request(origin)
+      .delete(`/xenon/api/oauth/grants/${theirs.grantId}`)
+      .set(bearer(readOnly));
+    expect(refused.status).to.equal(404);
+    expect((await grantRow(theirs.grantId)).revokedAt).to.equal(null);
+
+    const withAdmin = await keys.sign(
+      { sub: root.user.id, scopes: 'admin' },
+      { audience: 'xenon-rest', ttlSeconds: 600 },
+    );
+    const allowed = await request(origin)
+      .delete(`/xenon/api/oauth/grants/${theirs.grantId}`)
+      .set(bearer(withAdmin));
+    expect(allowed.status).to.equal(204);
   });
 
   it("revoking ends the grant's leases", async () => {

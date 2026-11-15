@@ -19,6 +19,7 @@ import { passwordResetMode } from '../../services/passwordResetMode';
 import { buildResetLink, resetEmail, resetLinkBase } from '../../services/passwordResetLink';
 import { mintedLifetimeSec } from '../../services/token/mintedLifetime';
 import { mcpTokenTtlSec } from '../../services/token/mcpTokenTtl';
+import { refuseGrantBound } from '../../middleware/refuseGrantBound';
 
 const SESSION_COOKIE = 'xenon_dashboard_session';
 const isSecureFromReq = (req: any) =>
@@ -364,7 +365,7 @@ export function authAuthedRouter(): Router {
     });
   });
 
-  r.post('/token', async (req, res) => {
+  r.post('/token', refuseGrantBound, async (req, res) => {
     try {
       const out = await issueToken(req.auth!, req.body ?? {});
       res.json(out);
