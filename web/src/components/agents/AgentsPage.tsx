@@ -7,14 +7,19 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/button';
 import { Table, THead, TBody, TR, TH, TD } from '../ui/Table';
 import { useToast } from '../ui/toast';
+import { useAuth } from '../../auth/auth-context';
 import { formatDateTime, formatRelative } from '../../utils/time';
 import { scopeWords } from '../oauth/scopeWords';
 import { agentCommands, isPlainHttpHub } from './agentCommands';
 
+/** The connected agents: none to list with sign-in off, or the server didn't answer. */
+type SignInList = { kind: 'off' } | { kind: 'failed' } | { kind: 'list'; items: AgentSignIn[] };
+
 type Load =
   | { kind: 'loading' }
+  | { kind: 'failed' }
   | { kind: 'unavailable' }
-  | { kind: 'ready'; hub: string; signIns: AgentSignIn[] | null };
+  | { kind: 'ready'; hub: string; signIns: SignInList };
 
 /** The lab's origin from its MCP endpoint's URL, else the page's own. */
 function hubFrom(url: string | undefined): string {
@@ -41,14 +46,26 @@ export default function AgentsPage() {
   const [copied, setCopied] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState<string | null>(null);
 
+  const { me } = useAuth();
+  const signInOff = me?.authDisabled === true;
+
+  // "Not available" and "sign-in is off" only from what the server says, never
+  // from a failed request (a 429, a restart): that gets Try again instead.
   const read = useCallback(async () => {
-    const [server, signIns] = await Promise.all([
+    const [server, list] = await Promise.allSettled([
       XenonApiService.getMcpServer(),
-      XenonApiService.getAgentSignIns().catch(() => null),
+      signInOff ? Promise.resolve(null) : XenonApiService.getAgentSignIns(),
     ]);
-    if (!server) return setLoad({ kind: 'unavailable' });
-    setLoad({ kind: 'ready', hub: hubFrom(server.url), signIns });
-  }, []);
+    if (server.status === 'rejected') return setLoad({ kind: 'failed' });
+    if (!server.value) return setLoad({ kind: 'unavailable' });
+    const signIns: SignInList =
+      list.status === 'rejected'
+        ? { kind: 'failed' }
+        : list.value === null
+          ? { kind: 'off' }
+          : { kind: 'list', items: list.value };
+    setLoad({ kind: 'ready', hub: hubFrom(server.value.url), signIns });
+  }, [signInOff]);
 
   useEffect(() => {
     void read();
@@ -93,6 +110,17 @@ export default function AgentsPage() {
           </p>
         )}
 
+        {load.kind === 'failed' && (
+          <div className="space-y-3">
+            <p className="text-sm text-[var(--text-muted)]">
+              Couldn't load this page. The server didn't answer.
+            </p>
+            <Button variant="secondary" size="sm" onClick={() => void read()}>
+              Try again
+            </Button>
+          </div>
+        )}
+
         {load.kind === 'unavailable' && (
           <p className="text-sm text-[var(--text-muted)]">
             AI agents aren't available on this server. Open the dashboard of the Xenon server your
@@ -103,7 +131,12 @@ export default function AgentsPage() {
         {load.kind === 'ready' && (
           <>
             <Commands hub={load.hub} copied={copied} onCopy={copy} />
-            <SignIns signIns={load.signIns} signingOut={signingOut} onSignOut={signOut} />
+            <SignIns
+              signIns={load.signIns}
+              signingOut={signingOut}
+              onSignOut={signOut}
+              onRetry={() => void read()}
+            />
           </>
         )}
       </div>
@@ -162,22 +195,31 @@ function SignIns({
   signIns,
   signingOut,
   onSignOut,
+  onRetry,
 }: {
-  signIns: AgentSignIn[] | null;
+  signIns: SignInList;
   signingOut: string | null;
   onSignOut: (signIn: AgentSignIn) => void;
+  onRetry: () => void;
 }) {
+  const listed = signIns.kind === 'list' && signIns.items.length > 0;
   return (
-    <Card
-      header={<h2 id="connected-agents">Connected agents</h2>}
-      padded={signIns === null || signIns.length === 0}
-    >
-      {signIns === null ? (
+    <Card header={<h2 id="connected-agents">Connected agents</h2>} padded={!listed}>
+      {signIns.kind === 'off' ? (
         <p className="text-sm text-[var(--text-muted)]">
           Sign-in is turned off on this server, so agents connect without signing in and there is
           nothing to list.
         </p>
-      ) : signIns.length === 0 ? (
+      ) : signIns.kind === 'failed' ? (
+        <div className="space-y-3">
+          <p className="text-sm text-[var(--text-muted)]">
+            Couldn't load your connected agents. The server didn't answer.
+          </p>
+          <Button variant="secondary" size="sm" onClick={onRetry}>
+            Try again
+          </Button>
+        </div>
+      ) : signIns.items.length === 0 ? (
         <p className="text-sm text-[var(--text-muted)]">
           No agent is signed in yet. Run a command above, then allow the agent when it opens this
           browser.
@@ -196,9 +238,11 @@ function SignIns({
             </TR>
           </THead>
           <TBody>
-            {signIns.map((s) => (
+            {signIns.items.map((s) => (
               <TR key={s.id}>
-                <TD className="break-words">{s.clientName}</TD>
+                {/* The agent picks its name: a long one with no spaces must
+                    wrap, or the auto-sized table pushes Sign out off the card. */}
+                <TD className="[overflow-wrap:anywhere]">{s.clientName}</TD>
                 <TD>
                   <ul className="space-y-0.5">
                     {s.scopes.map((scope) => (

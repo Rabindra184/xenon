@@ -570,14 +570,16 @@ export default class XenonApiService {
 
   /**
    * The agents this user has signed in, most recently used first; null when
-   * this server signs no agents in (auth disabled, or a node: the route
-   * answers 404).
+   * this server signs no agents in (the route answers 404: auth disabled, or
+   * a node). Throws on any other failure, which says nothing about that.
    */
   public static async getAgentSignIns(): Promise<AgentSignIn[] | null> {
     const res = await fetch('/xenon/api/oauth/grants', { credentials: 'include' });
-    if (!res.ok) return null;
-    const body = await res.json().catch(() => null);
-    return Array.isArray(body) ? (body as AgentSignIn[]) : null;
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`Couldn't load the connected agents (${res.status})`);
+    const body = await res.json();
+    if (!Array.isArray(body)) throw new Error("The server's answer wasn't a list");
+    return body as AgentSignIn[];
   }
 
   /** Sign one out: its tokens stop working at once. */
@@ -588,18 +590,14 @@ export default class XenonApiService {
   /**
    * This server's tools for coding agents (`features.mcpServer` in
    * `/capabilities`): `url` is the address agents are given. Null when it
-   * serves none (a node) or can't be asked.
+   * serves none (a node). Throws when it can't be asked.
    */
   public static async getMcpServer(): Promise<{ url?: string } | null> {
-    try {
-      const res = await fetch('/xenon/api/capabilities', { credentials: 'include' });
-      if (!res.ok) return null;
-      const body = await res.json();
-      const server = body?.features?.mcpServer;
-      return server && typeof server === 'object' ? (server as { url?: string }) : null;
-    } catch {
-      return null;
-    }
+    const res = await fetch('/xenon/api/capabilities', { credentials: 'include' });
+    if (!res.ok) throw new Error(`Couldn't read this server's features (${res.status})`);
+    const body = await res.json();
+    const server = body?.features?.mcpServer;
+    return server && typeof server === 'object' ? (server as { url?: string }) : null;
   }
 }
 

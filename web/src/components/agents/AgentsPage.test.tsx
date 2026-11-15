@@ -4,6 +4,12 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { ToastProvider } from '../ui/toast';
+
+const auth = vi.hoisted(() => ({ authDisabled: false }));
+vi.mock('../../auth/auth-context', () => ({
+  useAuth: () => ({ me: { userId: 'u1', role: 'MEMBER', authDisabled: auth.authDisabled } }),
+}));
+
 import AgentsPage from './AgentsPage';
 
 /** What the server answers, by path; anything else is a 404. */
@@ -47,6 +53,7 @@ function renderPage() {
 describe('AgentsPage', () => {
   let writeText: (text: string) => Promise<void>;
   beforeEach(() => {
+    auth.authDisabled = false;
     calls = [];
     answers = {
       'GET /xenon/api/capabilities': {
@@ -167,6 +174,7 @@ describe('AgentsPage', () => {
   });
 
   it('with sign-in off, still gives the commands and says agents connect without signing in', async () => {
+    auth.authDisabled = true;
     delete answers['GET /xenon/api/oauth/grants'];
     renderPage();
     expect(
@@ -183,5 +191,41 @@ describe('AgentsPage', () => {
     expect(
       screen.queryByRole('list', { name: /add xenon to your agent/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it("says it couldn't load, not that agents aren't available, when the server fails", async () => {
+    answers['GET /xenon/api/capabilities'] = { status: 500, body: { error: 'internal' } };
+    renderPage();
+    expect(await screen.findByText(/couldn't load this page/i)).toBeInTheDocument();
+    expect(screen.queryByText(/aren't available/i)).not.toBeInTheDocument();
+
+    answers['GET /xenon/api/capabilities'] = {
+      status: 200,
+      body: { features: { mcpServer: { url: 'https://xenon.example.com/xenon/mcp' } } },
+    };
+    userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(
+      await screen.findByRole('list', { name: /add xenon to your agent/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("says it couldn't load the connected agents, not that sign-in is off, when that fails", async () => {
+    answers['GET /xenon/api/oauth/grants'] = { status: 500, body: { error: 'internal' } };
+    renderPage();
+    expect(await screen.findByText(/couldn't load your connected agents/i)).toBeInTheDocument();
+    expect(screen.queryByText(/sign-in is turned off/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps Sign out reachable beside an agent name with no spaces in it', async () => {
+    const long = 'A'.repeat(100);
+    answers['GET /xenon/api/oauth/grants'] = {
+      status: 200,
+      body: [{ ...GRANTS[0], clientName: long }],
+    };
+    renderPage();
+    const table = await screen.findByRole('table', { name: /connected agents/i });
+    const nameCell = within(table).getByText(long);
+    expect(nameCell.className).toMatch(/overflow-wrap:anywhere/);
+    expect(within(table).getByRole('button', { name: `Sign out ${long}` })).toBeInTheDocument();
   });
 });
