@@ -191,7 +191,7 @@ describe('client metadata documents', () => {
   for (const url of [
     'https://127.0.0.1/client.json',
     'https://[::1]/client.json',
-    'https://[::ffff:10.0.0.1]/client.json',
+    'https://[::ffff:a00:1]/client.json', // ::ffff:10.0.0.1, as the parser writes it
     'https://0.0.0.0/client.json',
   ]) {
     it(`refuses the address literal in ${url} without a lookup`, async () => {
@@ -211,12 +211,16 @@ describe('client metadata documents', () => {
     expect(err.reason).to.equal('unresolvable');
   });
 
-  it('refuses a URL with credentials, a fragment or no path', async () => {
+  it('refuses a URL with credentials, a fragment, no path, control characters or another spelling', async () => {
     const { deps } = fakes([PUBLIC], () => response(200, JSON.stringify(documentFor())));
     for (const url of [
       'https://user:pass@agent.example/client.json',
       'https://agent.example/client.json#x',
       'https://agent.example/',
+      'https://agent.example/client.json\r\nforged',
+      'https://agent.example/client\t.json',
+      'https://Agent.example/client.json',
+      'https://agent.example:443/client.json',
     ]) {
       const err = await refusal(fetchClientMetadataDocument(url, deps));
       expect(err.reason, url).to.equal('bad_url');
@@ -284,6 +288,8 @@ describe('client metadata documents', () => {
       '::ffff:7f00:1',
       '64:ff9b::a00:1',
       '2002:a00:1::1',
+      '::ffff:0:127.0.0.1',
+      '::ffff:0:808:808',
       'not an address',
     ]) {
       expect(isPublicAddress(a), a).to.equal(false);

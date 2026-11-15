@@ -177,6 +177,7 @@ export class XenonOAuthProvider implements OAuthServerProvider {
       const grant = grantForRole(user.role, code.scopes);
       const created = await this.grants.create(user.id, client.client_id, grant.granular);
       grantId = created.grantId;
+      await this.clients.noteUsed(client.client_id);
       return {
         ...(await this.accessToken(user, grant, created.grantId)),
         refresh_token: created.refreshToken,
@@ -217,6 +218,7 @@ export class XenonOAuthProvider implements OAuthServerProvider {
       throw err;
     }
     const grant = grantForRole(user.role, narrowed.length > 0 ? narrowed : rotated.scopes);
+    await this.clients.noteUsed(client.client_id);
     return {
       ...(await this.accessToken(user, grant, rotated.grantId)),
       refresh_token: rotated.refreshToken,

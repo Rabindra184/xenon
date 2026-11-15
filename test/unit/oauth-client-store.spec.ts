@@ -8,6 +8,7 @@ import { prisma } from '../../src/prisma';
 import {
   ClientStore,
   MAX_REGISTERED_CLIENTS,
+  REGISTRATIONS_PER_ADDRESS_PER_HOUR,
   redirectUriProblem,
 } from '../../src/services/oauth/clientStore';
 import { ClientMetadataRefused } from '../../src/services/oauth/clientMetadataDocument';
@@ -115,28 +116,70 @@ describe('the sign-in client store', () => {
     expect(err.errorCode).to.equal('invalid_redirect_uri');
   });
 
-  it(`keeps at most ${MAX_REGISTERED_CLIENTS} clients, after dropping those unused for 30 days`, async () => {
-    const now = Date.now();
+  async function seedFullStore(lastUsedAt: (i: number) => Date) {
     const rows = Array.from({ length: MAX_REGISTERED_CLIENTS }, (_, i) => ({
       id: `seeded-${i}`,
       name: 'seeded',
       redirectUris: '["http://127.0.0.1/cb"]',
-      createdAt: new Date(now),
-      lastUsedAt: new Date(now),
+      createdAt: lastUsedAt(i),
+      lastUsedAt: lastUsedAt(i),
     }));
     await prisma.mcpClient.createMany({ data: rows });
+  }
 
-    const err = await oauthError(store.registerClient(registration()));
-    expect(err.errorCode).to.equal('too_many_requests');
-
-    await prisma.mcpClient.update({
-      where: { id: 'seeded-0' },
-      data: { lastUsedAt: new Date(now - 31 * DAY) },
-    });
-    const info = await store.registerClient(registration());
+  it(`keeps at most ${MAX_REGISTERED_CLIENTS} clients, dropping those unused for 30 days first`, async () => {
+    const now = Date.now();
+    await seedFullStore((i) => new Date(now - (i === 7 ? 31 * DAY : 1000)));
+    const info = await store.registerClient(registration(), '198.51.100.1');
     expect(info.client_id).to.be.a('string');
-    expect(await prisma.mcpClient.findUnique({ where: { id: 'seeded-0' } })).to.equal(null);
+    expect(await prisma.mcpClient.findUnique({ where: { id: 'seeded-7' } })).to.equal(null);
     expect(await prisma.mcpClient.count()).to.equal(MAX_REGISTERED_CLIENTS);
+  });
+
+  it('a full store evicts the longest-unused client without a live sign-in, rather than refusing', async () => {
+    const now = Date.now();
+    // seeded-0 is the oldest, but signed in; seeded-1 is the oldest without a sign-in.
+    await seedFullStore((i) => new Date(now - (MAX_REGISTERED_CLIENTS - i) * 60_000));
+    await prisma.mcpGrant.deleteMany({});
+    await prisma.mcpGrant.create({
+      data: {
+        id: 'grant-of-seeded-0',
+        userId: 'someone',
+        clientId: 'seeded-0',
+        scopes: 'xenon:devices:read',
+        tokenHash: 'x',
+        createdAt: new Date(now),
+        lastUsedAt: new Date(now),
+        expiresAt: new Date(now + 90 * DAY),
+      },
+    });
+    const info = await store.registerClient(registration(), '198.51.100.1');
+    expect(info.client_id).to.be.a('string');
+    expect(await prisma.mcpClient.findUnique({ where: { id: 'seeded-0' } })).to.not.equal(null);
+    expect(await prisma.mcpClient.findUnique({ where: { id: 'seeded-1' } })).to.equal(null);
+    expect(await prisma.mcpClient.count()).to.equal(MAX_REGISTERED_CLIENTS);
+    await prisma.mcpGrant.deleteMany({});
+  });
+
+  it('refuses only when every registered client has a live sign-in', async () => {
+    const now = Date.now();
+    await seedFullStore(() => new Date(now));
+    await prisma.mcpGrant.deleteMany({});
+    await prisma.mcpGrant.createMany({
+      data: Array.from({ length: MAX_REGISTERED_CLIENTS }, (_, i) => ({
+        id: `grant-${i}`,
+        userId: 'someone',
+        clientId: `seeded-${i}`,
+        scopes: 'xenon:devices:read',
+        tokenHash: `h${i}`,
+        createdAt: new Date(now),
+        lastUsedAt: new Date(now),
+        expiresAt: new Date(now + 90 * DAY),
+      })),
+    });
+    const err = await oauthError(store.registerClient(registration(), '198.51.100.1'));
+    expect(err.errorCode).to.equal('too_many_requests');
+    await prisma.mcpGrant.deleteMany({});
   });
 
   it('forgets a client unused for 30 days, and keeps one in use', async () => {
@@ -144,11 +187,71 @@ describe('the sign-in client store', () => {
     const used = await store.registerClient(registration());
     const idle = await store.registerClient(registration());
     clock.tick(20 * DAY);
-    expect(await store.getClient(used.client_id)).to.not.equal(undefined);
+    await store.noteUsed(used.client_id);
     clock.tick(11 * DAY);
     expect(await store.getClient(used.client_id)).to.not.equal(undefined);
     expect(await store.getClient(idle.client_id)).to.equal(undefined);
     expect(await prisma.mcpClient.findUnique({ where: { id: idle.client_id } })).to.equal(null);
+  });
+
+  it("looking a client up doesn't count as using it", async () => {
+    const clock = sinon.useFakeTimers({ now: Date.now(), toFake: ['Date'] });
+    const info = await store.registerClient(registration());
+    for (let day = 0; day < 31; day += 1) {
+      clock.tick(DAY);
+      await store.getClient(info.client_id);
+    }
+    expect(await store.getClient(info.client_id)).to.equal(undefined);
+    expect(await prisma.mcpClient.findUnique({ where: { id: info.client_id } })).to.equal(null);
+  });
+
+  describe('registrations from one address', () => {
+    it('refuses the 21st within an hour, and takes others', async () => {
+      const clock = sinon.useFakeTimers({ now: Date.now(), toFake: ['Date'] });
+      for (let i = 0; i < REGISTRATIONS_PER_ADDRESS_PER_HOUR; i += 1) {
+        await store.registerClient(registration(), '203.0.113.9');
+      }
+      const err = await oauthError(store.registerClient(registration(), '203.0.113.9'));
+      expect(err.errorCode).to.equal('too_many_requests');
+      expect(await prisma.mcpClient.count()).to.equal(REGISTRATIONS_PER_ADDRESS_PER_HOUR);
+
+      // Another address is counted on its own.
+      await store.registerClient(registration(), '203.0.113.10');
+      // An hour after the first, there is room again.
+      clock.tick(60 * 60_000 + 1);
+      await store.registerClient(registration(), '203.0.113.9');
+    });
+
+    it('counts registrations made, not refused ones', async () => {
+      for (let i = 0; i < 30; i += 1) {
+        await oauthError(
+          store.registerClient(
+            registration({ redirect_uris: ['http://evil.example/cb'] }),
+            '203.0.113.9',
+          ),
+        );
+      }
+      await store.registerClient(registration(), '203.0.113.9');
+    });
+
+    it('counts registrations with no address together', async () => {
+      for (let i = 0; i < REGISTRATIONS_PER_ADDRESS_PER_HOUR; i += 1) {
+        await store.registerClient(registration());
+      }
+      const err = await oauthError(store.registerClient(registration()));
+      expect(err.errorCode).to.equal('too_many_requests');
+    });
+
+    it('forAddress gives the SDK handler a store that counts that address', async () => {
+      const view = store.forAddress('203.0.113.9');
+      for (let i = 0; i < REGISTRATIONS_PER_ADDRESS_PER_HOUR; i += 1) {
+        await view.registerClient!(registration());
+      }
+      const err = await oauthError(Promise.resolve(view.registerClient!(registration())));
+      expect(err.errorCode).to.equal('too_many_requests');
+      const info = await store.registerClient(registration(), '203.0.113.10');
+      expect((await view.getClient(info.client_id))?.client_id).to.equal(info.client_id);
+    });
   });
 
   it('answers an unknown client with nothing', async () => {
@@ -214,6 +317,22 @@ describe('the sign-in client store', () => {
       });
       const err = await oauthError(store.getClient(url) as Promise<unknown>);
       expect(err).to.be.instanceOf(InvalidClientError);
+    });
+
+    it('refuses a client_id with control characters, and logs it escaped', async () => {
+      const info = sinon.spy((store as any).log, 'info');
+      for (const bad of [
+        `${url}\r\nforged log line`,
+        `${url}\tx`,
+        'https://Agent.example/oauth/client.json',
+      ]) {
+        const err = await oauthError(store.getClient(bad) as Promise<unknown>);
+        expect(err).to.be.instanceOf(InvalidClientError);
+        expect(JSON.stringify(err.toResponseObject())).to.not.contain('forged');
+      }
+      for (const call of info.getCalls()) {
+        expect(String(call.args[0])).to.not.match(/[\r\n\t]/);
+      }
     });
 
     it('takes a plain http client_id as a document, and refuses it', async () => {

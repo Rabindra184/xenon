@@ -102,6 +102,7 @@ const BLOCKED_V4: Array<[string, number]> = [
 const BLOCKED_V6: Array<[string, number]> = [
   ['::', 128], // unspecified
   ['::1', 128], // loopback
+  ['::ffff:0:0:0', 96], // IPv4-translated (SIIT)
   ['64:ff9b:1::', 48], // local-use NAT64
   ['100::', 64], // discard
   ['2001::', 23], // IETF protocol assignments (Teredo among them)
@@ -235,6 +236,15 @@ function checkUrl(raw: string): URL {
     url = new URL(raw);
   } catch {
     throw new ClientMetadataRefused('bad_url', 'the client_id is not a URL');
+  }
+  // The WHATWG parser drops tabs and newlines and rewrites some spellings,
+  // so a client_id must be the URL exactly as the parser writes it: nothing
+  // else is ever logged or stored as one.
+  if (/\p{Cc}/u.test(raw) || url.href !== raw) {
+    throw new ClientMetadataRefused(
+      'bad_url',
+      'a client_id URL must be written exactly as its normalized form, with no control characters',
+    );
   }
   if (url.protocol !== 'https:') {
     throw new ClientMetadataRefused('not_https', 'a client_id document must be served over https');

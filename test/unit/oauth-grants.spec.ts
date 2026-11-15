@@ -15,7 +15,7 @@ import { prisma } from '../../src/prisma';
 import { JwtKeyService } from '../../src/services/token/JwtKeyService';
 import { verifyBearerCredential } from '../../src/middleware/verifyCredential';
 import { AuthCodes, AUTH_CODE_TTL_MS } from '../../src/services/oauth/authCodes';
-import { GrantStore } from '../../src/services/oauth/grantStore';
+import { GrantStore, SPENT_REFRESH_TOKEN_MEMORY_MS } from '../../src/services/oauth/grantStore';
 import { ClientStore } from '../../src/services/oauth/clientStore';
 import { XenonOAuthProvider } from '../../src/services/oauth/oauthProvider';
 
@@ -579,6 +579,54 @@ describe('sign-in codes and grants', () => {
       } finally {
         restore();
       }
+    });
+  });
+
+  describe('what counts as use', () => {
+    it('a sign-in and a refresh note the client as used', async () => {
+      const clock = sinon.useFakeTimers({ now: Date.now(), toFake: ['Date'] });
+      const lastUsed = async () =>
+        (await prisma.mcpClient.findUnique({
+          where: { id: client.client_id },
+        }))!.lastUsedAt.getTime();
+      clock.tick(2 * 60 * 60_000);
+      const tokens = await signIn();
+      expect(await lastUsed()).to.equal(Date.now());
+      clock.tick(2 * 60 * 60_000);
+      await provider.exchangeRefreshToken(client, tokens.refresh_token!);
+      expect(await lastUsed()).to.equal(Date.now());
+    });
+  });
+
+  describe('spent refresh tokens', () => {
+    it('are remembered for 7 days: a reuse inside them revokes the grant', async () => {
+      const clock = sinon.useFakeTimers({ now: Date.now(), toFake: ['Date'] });
+      const first = await signIn();
+      const second = await provider.exchangeRefreshToken(client, first.refresh_token!);
+      clock.tick(SPENT_REFRESH_TOKEN_MEMORY_MS - 60_000);
+      expect(await grants.rotate(first.refresh_token!)).to.equal('reused');
+      expect(await grants.rotate(second.refresh_token!)).to.equal('invalid');
+    });
+
+    it('are forgotten after 7 days, by a hub that only refreshes', async () => {
+      const clock = sinon.useFakeTimers({ now: Date.now(), toFake: ['Date'] });
+      const revokedOne = await signIn();
+      const gone = String((await claimsOf(revokedOne.access_token)).gid);
+      await grants.revoke(gone, 'test');
+      const first = await signIn();
+      const gid = String((await claimsOf(first.access_token)).gid);
+      const second = await provider.exchangeRefreshToken(client, first.refresh_token!);
+      expect(await prisma.mcpGrant.count({ where: { rotatedFromId: gid } })).to.equal(1);
+
+      clock.tick(SPENT_REFRESH_TOKEN_MEMORY_MS + 60_000);
+      // No new sign-in: only this refresh runs, and it prunes.
+      const third = await provider.exchangeRefreshToken(client, second.refresh_token!);
+      expect(await prisma.mcpGrant.count({ where: { rotatedFromId: gid } })).to.equal(1);
+      expect(await prisma.mcpGrant.findUnique({ where: { id: gone } })).to.equal(null);
+      // The forgotten token is simply invalid; the sign-in goes on.
+      expect(await grants.rotate(first.refresh_token!)).to.equal('invalid');
+      expect((await grants.find(gid))?.revokedAt).to.equal(null);
+      expect(await grants.rotate(third.refresh_token!)).to.be.an('object');
     });
   });
 

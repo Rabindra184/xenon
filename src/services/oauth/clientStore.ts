@@ -7,6 +7,7 @@ import {
   InvalidClientError,
   TooManyRequestsError,
 } from '@modelcontextprotocol/sdk/server/auth/errors.js';
+import { Container } from 'typedi';
 import { prisma } from '../../prisma';
 import log from '../../logger';
 import {
@@ -15,21 +16,21 @@ import {
   RefusalReason,
   fetchClientMetadataDocument,
 } from './clientMetadataDocument';
+import { GrantStore } from './grantStore';
 
 /** A registered agent unused this long is forgotten. */
 export const CLIENT_UNUSED_DROP_MS = 30 * 24 * 60 * 60 * 1000;
 /** At most this many registered agents, after the unused ones are dropped. */
 export const MAX_REGISTERED_CLIENTS = 500;
 /**
- * Registrations allowed from one address in an hour. The SDK's registration
- * handler (`clientRegistrationHandler`) counts them, with this as its default
- * limit, so the route that mounts it (Task 6) keeps its `rateLimit` default:
- * `registerClient` is not told who registers.
+ * Registrations made from one address in an hour, at most
+ * (`registerClient`'s `address`; the route passes it through `forAddress`).
+ * Registrations that don't say where they came from share one count.
  */
 export const REGISTRATIONS_PER_ADDRESS_PER_HOUR = 20;
-
-/** How often a client's `lastUsedAt` is written, at most. */
-const TOUCH_EVERY_MS = 60 * 60 * 1000;
+const REGISTRATION_WINDOW_MS = 60 * 60 * 1000;
+/** Addresses whose registrations are counted at once, at most. */
+const MAX_COUNTED_ADDRESSES = 10_000;
 const MAX_REDIRECT_URIS = 10;
 const MAX_REDIRECT_URI_LENGTH = 2000;
 const MAX_NAME_LENGTH = 100;
@@ -158,6 +159,9 @@ export function isClientMetadataDocumentId(clientId: string): boolean {
 export class ClientStore implements OAuthRegisteredClientsStore {
   private log = log.scope('OAuthClients');
 
+  /** When each address registered, in the last hour: address -> times (ms). */
+  private registrations = new Map<string, number[]>();
+
   /** How a metadata document is read; a spec replaces it. */
   fetchDocument: (url: string) => Promise<ClientMetadata> = (url) =>
     fetchClientMetadataDocument(url);
@@ -171,27 +175,88 @@ export class ClientStore implements OAuthRegisteredClientsStore {
       await prisma.mcpClient.deleteMany({ where: { id: row.id } });
       return undefined;
     }
-    if (now - row.lastUsedAt.getTime() > TOUCH_EVERY_MS) {
-      await prisma.mcpClient
-        .update({ where: { id: row.id }, data: { lastUsedAt: new Date(now) } })
-        .catch((err) => this.log.debug(`could not note a client's use: ${err?.message ?? err}`));
-    }
     return publicClient(row.id, row.name, JSON.parse(row.redirectUris), row.createdAt);
   }
 
+  /**
+   * The client was really used: a code or refresh token of it was exchanged
+   * (XenonOAuthProvider). Only this keeps a registration from being
+   * forgotten; looking a client up, which anyone can make the hub do, doesn't.
+   */
+  async noteUsed(clientId: string): Promise<void> {
+    if (isClientMetadataDocumentId(clientId)) return;
+    await prisma.mcpClient
+      .updateMany({ where: { id: clientId }, data: { lastUsedAt: new Date() } })
+      .catch((err) => this.log.debug(`could not note a client's use: ${err?.message ?? err}`));
+  }
+
+  /**
+   * This store as the SDK's registration handler sees it, for one caller:
+   * its registrations count against `address` (the route reads the caller's
+   * address, with trustProxy behind a reverse proxy).
+   */
+  forAddress(address: string): OAuthRegisteredClientsStore {
+    return {
+      getClient: (clientId) => this.getClient(clientId),
+      registerClient: (client) => this.registerClient(client, address),
+    };
+  }
+
+  /**
+   * Register an agent. Refused (`too_many_requests`) as the 21st from
+   * `address` in an hour, or when the hub holds 500 and none can be evicted:
+   * clients unused for 30 days go first, then the longest-unused ones that
+   * hold no live sign-in.
+   */
   async registerClient(
     client: Omit<OAuthClientInformationFull, 'client_id' | 'client_id_issued_at'>,
+    address?: string,
   ): Promise<OAuthClientInformationFull> {
     const redirectUris = checkedRedirectUris(client.redirect_uris);
     const name = cleanName(client.client_name);
-    const now = new Date();
-    await this.dropUnused(now);
-    if ((await prisma.mcpClient.count()) >= MAX_REGISTERED_CLIENTS) {
+    const release = this.takeRegistrationSlot(address ?? '');
+    try {
+      return await this.store(name, redirectUris);
+    } catch (err) {
+      release();
+      throw err;
+    }
+  }
+
+  /** Count a registration from `key` now, or refuse it; answers how to un-count it. */
+  private takeRegistrationSlot(key: string): () => void {
+    const now = Date.now();
+    const recent = (this.registrations.get(key) ?? []).filter(
+      (t) => now - t < REGISTRATION_WINDOW_MS,
+    );
+    if (recent.length >= REGISTRATIONS_PER_ADDRESS_PER_HOUR) {
+      this.registrations.set(key, recent);
       throw new TooManyRequestsError(
-        `This hub already has ${MAX_REGISTERED_CLIENTS} registered agents. ` +
-          'An agent unused for 30 days is forgotten.',
+        `At most ${REGISTRATIONS_PER_ADDRESS_PER_HOUR} agents may register from one address in an hour`,
       );
     }
+    recent.push(now);
+    this.registrations.delete(key);
+    if (this.registrations.size >= MAX_COUNTED_ADDRESSES) {
+      for (const [k, times] of this.registrations) {
+        if (times.every((t) => now - t >= REGISTRATION_WINDOW_MS)) this.registrations.delete(k);
+      }
+      if (this.registrations.size >= MAX_COUNTED_ADDRESSES) {
+        this.registrations.delete(this.registrations.keys().next().value as string);
+      }
+    }
+    this.registrations.set(key, recent);
+    return () => {
+      const times = this.registrations.get(key);
+      const i = times ? times.indexOf(now) : -1;
+      if (i !== -1) times!.splice(i, 1);
+    };
+  }
+
+  private async store(name: string, redirectUris: string[]): Promise<OAuthClientInformationFull> {
+    const now = new Date();
+    await this.dropUnused(now);
+    await this.makeRoom();
     // Our own id, never one the request suggested: a registered id must
     // never look like a metadata document URL.
     const row = await prisma.mcpClient.create({
@@ -231,6 +296,27 @@ export class ClientStore implements OAuthRegisteredClientsStore {
     return r.count;
   }
 
+  /** At the cap, evict the longest-unused clients holding no live sign-in; refuse if none. */
+  private async makeRoom(): Promise<void> {
+    const over = (await prisma.mcpClient.count()) - MAX_REGISTERED_CLIENTS + 1;
+    if (over <= 0) return;
+    const signedIn = [...(await Container.get(GrantStore).clientsWithLiveGrants())];
+    const evict = await prisma.mcpClient.findMany({
+      where: { id: { notIn: signedIn } },
+      orderBy: { lastUsedAt: 'asc' },
+      select: { id: true },
+      take: over,
+    });
+    if (evict.length < over) {
+      throw new TooManyRequestsError(
+        `This hub already has ${MAX_REGISTERED_CLIENTS} registered agents, each signed in`,
+      );
+    }
+    const ids = evict.map((c: { id: string }) => c.id);
+    await prisma.mcpClient.deleteMany({ where: { id: { in: ids } } });
+    this.log.info(`made room for an agent: forgot ${ids.length} without a sign-in`);
+  }
+
   private async documentClient(url: string): Promise<OAuthClientInformationFull> {
     let doc: ClientMetadata;
     try {
@@ -240,7 +326,10 @@ export class ClientStore implements OAuthRegisteredClientsStore {
         // Anyone can name a client_id URL, so the answer never says how the
         // name resolved or whether something answered there: that would map
         // the hub's own network. The log says.
-        this.log.info(`refused the client_id document ${url}: ${err.reason} (${err.message})`);
+        // JSON.stringify: the URL is the caller's, so it is logged escaped.
+        this.log.info(
+          `refused the client_id document ${JSON.stringify(url.slice(0, 300))}: ${err.reason} (${err.message})`,
+        );
         throw new InvalidClientError(
           NETWORK_REASONS.has(err.reason)
             ? 'The client_id document could not be fetched'

@@ -8,6 +8,12 @@ export const DEFAULT_REFRESH_IDLE_DAYS = 30;
 export const DEFAULT_REFRESH_MAX_DAYS = 90;
 /** A revoked grant's rows are kept this long, then deleted. */
 const REVOKED_KEPT_MS = DAY_MS;
+/**
+ * How long a spent refresh token is remembered: presented again within it,
+ * it revokes its grant; after it, it is simply unknown. Bounds the rows a
+ * long sign-in keeps (a week of hourly refreshes is about 170).
+ */
+export const SPENT_REFRESH_TOKEN_MEMORY_MS = 7 * DAY_MS;
 /** How often a store prunes dead grants, at most. */
 const PRUNE_EVERY_MS = 60 * 60 * 1000;
 
@@ -109,6 +115,8 @@ function summary(row: GrantRow): GrantSummary {
  *   the old hash, with `rotatedFromId` naming the grant.
  * - A token that matches a spent row was presented a second time: the whole
  *   grant is revoked, every row with it (RFC 9700 §4.14.2).
+ *   Spent rows are kept SPENT_REFRESH_TOKEN_MEMORY_MS (7 days); an older one
+ *   is unknown. `prune` runs from `create` and `rotate`, at most hourly.
  * - A grant ends 30 days after its last refresh or 90 days after it began
  *   (XENON_MCP_REFRESH_IDLE_DAYS, XENON_MCP_REFRESH_MAX_DAYS, read each time).
  *
@@ -155,12 +163,14 @@ export class GrantStore {
     refreshToken: string,
     opts: { clientId?: string } = {},
   ): Promise<Rotated | 'reused' | 'invalid'> {
+    await this.pruneNowAndThen();
     const presented = refreshTokenHash(refreshToken);
     const row = (await prisma.mcpGrant.findFirst({
       where: { tokenHash: presented },
     })) as GrantRow | null;
     if (!row) return 'invalid';
     if (row.rotatedFromId) {
+      if (Date.now() - row.createdAt.getTime() >= SPENT_REFRESH_TOKEN_MEMORY_MS) return 'invalid';
       await this.revoke(row.rotatedFromId, 'refresh_token_reused');
       return 'reused';
     }
@@ -261,9 +271,35 @@ export class GrantStore {
     return rows.filter((r) => this.isLive(r, now)).map(summary);
   }
 
-  /** Delete grants past their limits, and those revoked a day ago, with their spent rows. */
+  /** The clients that hold a live grant: a registration that must not be evicted. */
+  async clientsWithLiveGrants(): Promise<Set<string>> {
+    const now = Date.now();
+    const rows = await prisma.mcpGrant.findMany({
+      where: {
+        rotatedFromId: null,
+        revokedAt: null,
+        expiresAt: { gt: new Date(now) },
+        createdAt: { gt: new Date(now - refreshMaxMs()) },
+        lastUsedAt: { gt: new Date(now - refreshIdleMs()) },
+      },
+      select: { clientId: true },
+      distinct: ['clientId'],
+    });
+    return new Set(rows.map((r: { clientId: string }) => r.clientId));
+  }
+
+  /**
+   * Delete spent tokens older than SPENT_REFRESH_TOKEN_MEMORY_MS, and grants
+   * past their limits or revoked a day ago, with their spent rows.
+   */
   async prune(): Promise<number> {
     const now = Date.now();
+    const spent = await prisma.mcpGrant.deleteMany({
+      where: {
+        rotatedFromId: { not: null },
+        createdAt: { lt: new Date(now - SPENT_REFRESH_TOKEN_MEMORY_MS) },
+      },
+    });
     const dead = await prisma.mcpGrant.findMany({
       where: {
         rotatedFromId: null,
@@ -277,12 +313,12 @@ export class GrantStore {
       select: { id: true },
       take: 500,
     });
-    if (dead.length === 0) return 0;
+    if (dead.length === 0) return spent.count;
     const ids = dead.map((d: { id: string }) => d.id);
     const r = await prisma.mcpGrant.deleteMany({
       where: { OR: [{ id: { in: ids } }, { rotatedFromId: { in: ids } }] },
     });
-    return r.count;
+    return spent.count + r.count;
   }
 
   private isLive(row: GrantRow, now: number): boolean {
