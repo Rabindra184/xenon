@@ -771,6 +771,46 @@ describe('agent sign-in (OAuth) end to end', () => {
       }
     });
 
+    it('a browser gets a readable page for an error answered directly', async () => {
+      const agent = new SpecAgent('https://evil.example/cb');
+      await agentAuth(agent);
+      const url = new URL(agent.authUrl!);
+      url.searchParams.set('code_challenge', 'abc');
+      const res = await request(origin)
+        .get(url.pathname + url.search)
+        .set('x-forwarded-for', testAddress)
+        .set('accept', 'text/html,application/xhtml+xml,*/*;q=0.8');
+      expect(res.status).to.equal(400);
+      expect(res.headers['content-type']).to.match(/^text\/html/);
+      expect(res.text).to.contain('Error: invalid_request (400)');
+      expect(res.headers.location).to.equal(undefined);
+    });
+
+    it('a browser gets the readable page for an agent whose document cannot be fetched', async () => {
+      const store = Container.get(ClientStore);
+      const fetchDocument = store.fetchDocument;
+      store.fetchDocument = sinon.stub().rejects(new ClientMetadataRefused('timeout', 'x'));
+      try {
+        const url = new URL(`${origin}/xenon/api/oauth/authorize`);
+        url.searchParams.set('response_type', 'code');
+        url.searchParams.set('client_id', 'https://agent.example/client.json');
+        url.searchParams.set('redirect_uri', 'http://127.0.0.1:5000/cb');
+        url.searchParams.set('code_challenge', 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
+        url.searchParams.set('code_challenge_method', 'S256');
+        url.searchParams.set('resource', `${origin}/xenon/mcp`);
+        const res = await request(origin)
+          .get(url.pathname + url.search)
+          .set('x-forwarded-for', testAddress)
+          .set('accept', 'text/html,application/xhtml+xml,*/*;q=0.8');
+        expect(res.status).to.equal(400);
+        expect(res.text).to.contain('start the sign-in again from your agent');
+        expect(res.text).to.contain('XENON_MCP_CLIENT_DOCUMENTS=off');
+      } finally {
+        store.fetchDocument = fetchDocument;
+        resetClientDocumentFallback();
+      }
+    });
+
     it('a full pending store is answered directly, 429', async () => {
       const agent = new SpecAgent('https://evil.example/cb');
       await agentAuth(agent);

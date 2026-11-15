@@ -430,8 +430,7 @@ export function clientDocumentsOffered(now: number = Date.now()): boolean {
  * until now), rather than restarting one already running.
  */
 export function noteUnreachableClientDocument(now: number = Date.now()): boolean {
-  const opened =
-    unreachableAt === undefined || now - unreachableAt >= CLIENT_DOCUMENT_FALLBACK_MS;
+  const opened = unreachableAt === undefined || now - unreachableAt >= CLIENT_DOCUMENT_FALLBACK_MS;
   unreachableAt = now;
   return opened;
 }

@@ -318,7 +318,9 @@ describe('the sign-in client store', () => {
         redirect_uris: ['http://127.0.0.1:5000/cb'],
       };
       const fetch = sinon.stub();
-      fetch.onFirstCall().rejects(new ClientMetadataRefused('unresolvable', 'agent.example does not resolve'));
+      fetch
+        .onFirstCall()
+        .rejects(new ClientMetadataRefused('unresolvable', 'agent.example does not resolve'));
       fetch.onSecondCall().resolves(doc);
       store.fetchDocument = fetch;
       const first = await oauthError(store.getClient(url) as Promise<unknown>);
