@@ -148,6 +148,8 @@ export class XenonOAuthProvider implements OAuthServerProvider {
   ): Promise<OAuthTokens> {
     // Synchronous: a second exchange of this code, even one already running,
     // finds it used.
+    // Nothing is used up when no token could be signed: the agent can try again.
+    this.assertCanSign();
     const taken = this.codes.take(authorizationCode);
     if (taken.kind === 'unknown')
       throw new InvalidGrantError('The authorization code is not valid');
@@ -189,6 +191,7 @@ export class XenonOAuthProvider implements OAuthServerProvider {
     refreshToken: string,
     scopes?: string[],
   ): Promise<OAuthTokens> {
+    this.assertCanSign();
     const narrowed = scopes?.filter(Boolean) ?? [];
     if (narrowed.length > 0) {
       // Checked before the token is used, so a refused narrowing keeps it. A
@@ -270,6 +273,13 @@ export class XenonOAuthProvider implements OAuthServerProvider {
     const grant = await this.grants.find(gid);
     if (grant && grant.clientId === client.client_id) {
       await this.grants.revoke(grant.id, 'client_revoked');
+    }
+  }
+
+  /** The signing key loaded at boot; else a sign-in would spend a code or token for nothing. */
+  private assertCanSign(): void {
+    if (!Container.get(JwtKeyService).ready) {
+      throw new ServerError('This server cannot sign tokens right now');
     }
   }
 

@@ -12,6 +12,7 @@ import log from '../../logger';
 import {
   ClientMetadata,
   ClientMetadataRefused,
+  RefusalReason,
   fetchClientMetadataDocument,
 } from './clientMetadataDocument';
 
@@ -58,6 +59,14 @@ const FORBIDDEN_SCHEMES = new Set([
 ]);
 
 const GRANT_TYPES = ['authorization_code', 'refresh_token'];
+
+/** Refusals that would say something about the hub's network, answered alike. */
+const NETWORK_REASONS = new Set<RefusalReason>([
+  'unresolvable',
+  'private_address',
+  'unreachable',
+  'timeout',
+]);
 
 /**
  * Why a redirect URI can't be registered, or null when it can. Allowed:
@@ -228,7 +237,15 @@ export class ClientStore implements OAuthRegisteredClientsStore {
       doc = await this.fetchDocument(url);
     } catch (err) {
       if (err instanceof ClientMetadataRefused) {
-        throw new InvalidClientError(`The client_id document was refused: ${err.message}`);
+        // Anyone can name a client_id URL, so the answer never says how the
+        // name resolved or whether something answered there: that would map
+        // the hub's own network. The log says.
+        this.log.info(`refused the client_id document ${url}: ${err.reason} (${err.message})`);
+        throw new InvalidClientError(
+          NETWORK_REASONS.has(err.reason)
+            ? 'The client_id document could not be fetched'
+            : `The client_id document was refused: ${err.message}`,
+        );
       }
       throw err;
     }

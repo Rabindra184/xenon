@@ -530,6 +530,58 @@ describe('sign-in codes and grants', () => {
     });
   });
 
+  describe('without a signing key', () => {
+    it('spends neither the code nor the refresh token, and leaves no grant', async () => {
+      const tokens = await signIn();
+      const grantsBefore = await prisma.mcpGrant.count();
+      const { code, verifier } = issue();
+      Container.set(JwtKeyService, new JwtKeyService());
+
+      const exchange = await oauthError(
+        provider.exchangeAuthorizationCode(client, code, verifier, REDIRECT),
+      );
+      expect(exchange.errorCode).to.equal('server_error');
+      const refresh = await oauthError(
+        provider.exchangeRefreshToken(client, tokens.refresh_token!),
+      );
+      expect(refresh.errorCode).to.equal('server_error');
+      expect(await prisma.mcpGrant.count()).to.equal(grantsBefore);
+
+      Container.set(JwtKeyService, keys);
+      expect(
+        (await provider.exchangeAuthorizationCode(client, code, verifier, REDIRECT)).access_token,
+      ).to.be.a('string');
+      expect(
+        (await provider.exchangeRefreshToken(client, tokens.refresh_token!)).refresh_token,
+      ).to.be.a('string');
+    });
+  });
+
+  describe('from the container', () => {
+    it('shares one code store, grant store and client store with the routes', async () => {
+      const restore = saveRegistrations(AuthCodes, GrantStore, ClientStore);
+      try {
+        expect(Container.get(AuthCodes)).to.equal(Container.get(AuthCodes));
+        const defaults = new XenonOAuthProvider();
+        expect(defaults.clientsStore).to.equal(Container.get(ClientStore));
+        const { verifier, challenge } = pkce();
+        const code = Container.get(AuthCodes).issue({
+          userId: member.user.id,
+          clientId: client.client_id,
+          redirectUri: REDIRECT,
+          codeChallenge: challenge,
+          scopes: [],
+          resource: RESOURCE,
+        });
+        const tokens = await defaults.exchangeAuthorizationCode(client, code, verifier, REDIRECT);
+        const { gid } = await claimsOf(tokens.access_token);
+        expect(await Container.get(GrantStore).find(String(gid))).to.not.equal(null);
+      } finally {
+        restore();
+      }
+    });
+  });
+
   describe('the grant store', () => {
     it('lists a user’s live grants and revokes them all', async () => {
       await signIn();

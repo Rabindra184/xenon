@@ -181,7 +181,20 @@ describe('the sign-in client store', () => {
         .rejects(new ClientMetadataRefused('private_address', 'it resolves to a private address'));
       const err = await oauthError(store.getClient(url) as Promise<unknown>);
       expect(err).to.be.instanceOf(InvalidClientError);
-      expect(err.message).to.contain('private address');
+      expect(err.message).to.equal('The client_id document could not be fetched');
+    });
+
+    it("answers a name that doesn't resolve exactly as one that resolves privately", async () => {
+      const answers: string[] = [];
+      for (const reason of ['unresolvable', 'private_address', 'unreachable', 'timeout'] as const) {
+        store.fetchDocument = sinon
+          .stub()
+          .rejects(new ClientMetadataRefused(reason, `detail ${reason}`));
+        const err = await oauthError(store.getClient(url) as Promise<unknown>);
+        expect(err.message).to.not.contain('detail');
+        answers.push(JSON.stringify(err.toResponseObject()));
+      }
+      expect(new Set(answers).size).to.equal(1);
     });
 
     it('is refused when the document names a redirect URI the hub does not allow', async () => {
