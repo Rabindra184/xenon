@@ -572,6 +572,25 @@ describe('agent sign-in (OAuth) end to end', () => {
       expect(res.body.error).to.equal('invalid_request');
     });
 
+    it('authorize is GET only: a POST never reaches it', async () => {
+      const agent = new SpecAgent();
+      await agentAuth(agent);
+      const form = agent.authUrl!.search.slice(1);
+      const anonymous = await request(origin)
+        .post('/xenon/api/oauth/authorize')
+        .set('origin', origin)
+        .type('form')
+        .send(form);
+      expect(anonymous.status).to.equal(401);
+      const signedIn = await request(origin)
+        .post('/xenon/api/oauth/authorize')
+        .set('origin', origin)
+        .set('cookie', member.cookie)
+        .type('form')
+        .send(form);
+      expect(signedIn.status).to.equal(404);
+    });
+
     it('a plain or missing PKCE challenge is refused', async () => {
       const agent = new SpecAgent();
       await agentAuth(agent);
@@ -634,6 +653,31 @@ describe('agent sign-in (OAuth) end to end', () => {
       }
       expect((await send('2001:db8:5:6:ffff::1')).status).to.equal(429);
       expect((await send('2001:db8:5:7::1')).status).to.equal(400);
+    });
+    it('limits authorize requests per address', async () => {
+      const send = (xff: string) =>
+        request(origin)
+          .get('/xenon/api/oauth/authorize?client_id=no-such-agent&response_type=code')
+          .set('x-forwarded-for', xff);
+      for (let i = 0; i < 100; i++) {
+        expect((await send('203.0.113.70')).status).to.equal(400);
+      }
+      expect((await send('203.0.113.70')).status).to.equal(429);
+      expect((await send('203.0.113.71')).status).to.equal(400);
+    });
+
+    it('limits revocations per address', async () => {
+      const send = (xff: string) =>
+        request(origin)
+          .post('/xenon/api/oauth/revoke')
+          .set('x-forwarded-for', xff)
+          .type('form')
+          .send({ client_id: 'no-such-agent', token: 'x' });
+      for (let i = 0; i < 50; i++) {
+        expect((await send('203.0.113.80')).status).to.equal(400);
+      }
+      expect((await send('203.0.113.80')).status).to.equal(429);
+      expect((await send('203.0.113.81')).status).to.equal(400);
     });
   });
 

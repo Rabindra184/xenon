@@ -42,10 +42,10 @@ describe('agent sign-in parts', () => {
   });
 
   describe('requestLimiter', () => {
-    function appWith(max: number, windowMs = 60_000) {
+    function appWith(max: number, windowMs = 60_000, now?: () => number) {
       const app = express();
       app.set('trust proxy', 'loopback');
-      app.get('/', requestLimiter({ windowMs, max, message: 'slow down' }), (_req, res) =>
+      app.get('/', requestLimiter({ windowMs, max, message: 'slow down', now }), (_req, res) =>
         res.json({ ok: true }),
       );
       return app;
@@ -67,11 +67,13 @@ describe('agent sign-in parts', () => {
     });
 
     it('starts counting again once the window is over', async () => {
-      const app = appWith(1, 50);
+      let now = 1_000_000;
+      const app = appWith(1, 60_000, () => now);
       const from = () => request(app).get('/').set('x-forwarded-for', '192.0.2.9');
       expect((await from()).status).to.equal(200);
+      now += 59_999;
       expect((await from()).status).to.equal(429);
-      await new Promise((r) => setTimeout(r, 70));
+      now += 1;
       expect((await from()).status).to.equal(200);
     });
   });

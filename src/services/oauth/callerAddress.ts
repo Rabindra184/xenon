@@ -65,6 +65,8 @@ export interface RequestLimit {
   max: number;
   /** What the refusal says. */
   message: string;
+  /** The clock, in ms; a spec replaces it. */
+  now?: () => number;
 }
 
 /**
@@ -75,8 +77,9 @@ export interface RequestLimit {
  */
 export function requestLimiter(limit: RequestLimit): RequestHandler {
   const windows = new Map<string, { count: number; resetAt: number }>();
+  const clock = limit.now ?? Date.now;
   return (req: Request, res: Response, next: NextFunction) => {
-    const now = Date.now();
+    const now = clock();
     const key = callerAddress(req);
     let window = windows.get(key);
     if (!window || window.resetAt <= now) {
