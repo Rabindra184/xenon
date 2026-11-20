@@ -99,23 +99,32 @@ describe('AgentsPage', () => {
       'Gemini CLI',
       'Cursor',
       'VS Code',
-      'Windsurf',
+      'Windsurf (Devin Desktop)',
       'Claude Desktop',
     ]);
-    // Every agent but Claude Desktop, whose bridge isn't out yet, has something to copy.
-    for (const row of rows.slice(0, 6)) {
+    // Every agent has something to copy.
+    for (const row of rows) {
       expect(within(row).getByRole('button', { name: /^copy/i })).toBeInTheDocument();
     }
-    expect(within(rows[6]).queryByRole('button')).not.toBeInTheDocument();
-    expect(rows[6]).toHaveTextContent(/isn't available yet/);
+    expect(rows[6]).toHaveTextContent(
+      'npx @xenon-device-management/mcp add --hub https://xenon.example.com --client claude-desktop',
+    );
     expect(
       screen.getByText('claude mcp add --transport http xenon https://xenon.example.com/xenon/mcp'),
     ).toBeInTheDocument();
     // Cursor's is an entry for its settings file, which the row names.
     expect(rows[3]).toHaveTextContent('~/.cursor/mcp.json');
     expect(rows[3]).toHaveTextContent('"url": "https://xenon.example.com/xenon/mcp"');
-    // Nothing names Xenon's installer, which isn't published.
-    expect(commands.textContent).not.toMatch(/npx|@xenon-device-management/);
+    // Above the list, the installer, which sets up any of them.
+    expect(
+      screen.getByText('npx @xenon-device-management/mcp add --hub https://xenon.example.com'),
+    ).toBeInTheDocument();
+    userEvent.click(screen.getByRole('button', { name: 'Copy the Xenon installer command' }));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        'npx @xenon-device-management/mcp add --hub https://xenon.example.com',
+      ),
+    );
 
     userEvent.click(screen.getByRole('button', { name: 'Copy the Claude Code command' }));
     await waitFor(() =>
@@ -142,10 +151,12 @@ describe('AgentsPage', () => {
         'claude mcp add --transport http xenon http://lab-mac:4723/xenon/mcp',
       ),
     ).toBeInTheDocument();
-    expect(commands.textContent).not.toMatch(/npx|@xenon-device-management/);
     const note = screen.getByRole('note');
     expect(note).toHaveTextContent(/plain HTTP/);
     expect(note).toHaveTextContent(/HTTPS/);
+    // The installer's bridge is a way through, but it encrypts nothing.
+    expect(note).toHaveTextContent(/installer/);
+    expect(note).toHaveTextContent(/encrypts nothing/);
   });
 
   it('gives no warning for a lab on this computer, where agents accept plain HTTP', async () => {

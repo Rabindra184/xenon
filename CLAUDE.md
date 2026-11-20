@@ -2637,19 +2637,21 @@ user):
   `roleGuard`'s `403` (it is judged a MEMBER). A credential with no user is `403`.
 
 **Dashboard.** "AI agents" (`/agents`, `web/src/components/agents/`) for
-every signed-in user: per agent what `website/docs/ai-agents.mdx` gives
-(`agentSetups` in `agentCommands.ts`: Claude Code, Codex and VS Code a
-command; Gemini CLI, Cursor and Windsurf the entry for their settings file;
-Claude Desktop a note, since its bridge comes with the installer; keep the
-two in step), a warning on a plain-HTTP hub that isn't loopback that some
-agents won't sign in over plain HTTP, and Connected agents with Sign out
+every signed-in user: the installer's command (`installerSetup`), then per
+agent what `website/docs/ai-agents.mdx` gives (`agentSetups` in
+`agentCommands.ts`: Claude Code, Codex and VS Code a command; Gemini CLI,
+Cursor and Windsurf (Devin Desktop, `~/.config/devin/mcp_config.json`) the
+entry for their settings file; Claude Desktop the installer's command, since
+its bridge comes with the installer; keep the two in step), a warning on a
+plain-HTTP hub that isn't loopback that some agents won't sign in over plain
+HTTP and that the installer's bridge encrypts nothing, and Connected agents with Sign out
 (confirmed in `ui/Modal`). The consent page
 (`web/src/components/oauth/ConsentPage.tsx`) is a top-level route in
 `AuthShell`, not the dashboard's shell, behind `RouteGuard`; it shows the
 redirect URI's host, since the agent picks its own name, and navigates only
 to the `redirectTo` the server answers. The installer
-(`@xenon-device-management/mcp`) lives in `xenon-studio` and isn't published
-yet, so nothing names it on screen.
+(`@xenon-device-management/mcp`, on npm since 0.1.0) lives in `xenon-studio`;
+its README's agents table says how far each agent is proven.
 
 ### Identity & Manual Locks
 

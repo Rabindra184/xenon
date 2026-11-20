@@ -1,9 +1,10 @@
 /**
  * How a tester adds this lab to their coding agent, per agent: the agent's
  * own command, or the entry for its config file, the same as
- * website/docs/ai-agents.mdx gives. Xenon's installer, which would write any
- * agent's config and connect one over plain HTTP, isn't published yet, so
- * the page never names it.
+ * website/docs/ai-agents.mdx gives. Xenon's installer
+ * (`@xenon-device-management/mcp`, from xenon-studio) sets up any of them;
+ * Claude Desktop has no other way, since it connects through the installer's
+ * bridge.
  */
 export type AgentSetup =
   | {
@@ -24,13 +25,6 @@ export type AgentSetup =
       /** The entry, with this lab's address in it. */
       text: string;
       after?: string;
-    }
-  | {
-      client: string;
-      label: string;
-      kind: 'unavailable';
-      /** Why there is nothing to copy yet. */
-      note: string;
     };
 
 /** A config file's `mcpServers` entry for Xenon, `key` naming the address. */
@@ -38,12 +32,27 @@ function configEntry(key: string, mcpUrl: string): string {
   return JSON.stringify({ mcpServers: { xenon: { [key]: mcpUrl } } }, null, 2);
 }
 
+const INSTALLER = 'npx @xenon-device-management/mcp';
+
+/** The installer's command, which sets up any agent for the lab at `hubUrl` (its origin). */
+export function installerSetup(hubUrl: string): AgentSetup {
+  return {
+    client: 'installer',
+    label: 'Xenon installer',
+    kind: 'command',
+    text: `${INSTALLER} add --hub ${hubUrl.replace(/\/+$/, '')}`,
+    after:
+      "Sets up any of the agents below, with Xenon's skills: it asks which. Needs Node 22.12 or later.",
+  };
+}
+
 /**
  * Each agent's way of adding the lab at `hubUrl` (its origin, such as
  * `https://xenon.example.com`).
  */
 export function agentSetups(hubUrl: string): AgentSetup[] {
-  const mcpUrl = `${hubUrl.replace(/\/+$/, '')}/xenon/mcp`;
+  const hub = hubUrl.replace(/\/+$/, '');
+  const mcpUrl = `${hub}/xenon/mcp`;
   return [
     {
       client: 'claude-code',
@@ -85,18 +94,20 @@ export function agentSetups(hubUrl: string): AgentSetup[] {
     },
     {
       client: 'windsurf',
-      label: 'Windsurf',
+      label: 'Windsurf (Devin Desktop)',
       kind: 'config',
-      file: '~/.codeium/windsurf/mcp_config.json',
-      text: configEntry('serverUrl', mcpUrl),
+      file: '~/.config/devin/mcp_config.json',
+      text: configEntry('url', mcpUrl),
+      after: "Then open Cascade's MCP settings and click Authenticate next to xenon.",
     },
     {
       client: 'claude-desktop',
       label: 'Claude Desktop',
-      kind: 'unavailable',
-      note:
-        "Claude Desktop connects to a lab through a small bridge on your computer, which isn't " +
-        'available yet. Use one of the other agents for now.',
+      kind: 'command',
+      text: `${INSTALLER} add --hub ${hub} --client claude-desktop`,
+      after:
+        'Claude Desktop connects through a small bridge the installer adds on your computer. ' +
+        'The installer opens this browser for you to sign in; then restart Claude Desktop.',
     },
   ];
 }

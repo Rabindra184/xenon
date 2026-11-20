@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { agentSetups, isPlainHttpHub } from './agentCommands';
+import { agentSetups, installerSetup, isPlainHttpHub } from './agentCommands';
 
 const MCP_URL = 'https://hub/xenon/mcp';
 
@@ -15,7 +15,7 @@ describe('agentSetups', () => {
     });
   });
 
-  it("gives each agent its own command or config entry, as the docs do, and never Xenon's installer", () => {
+  it('gives each agent its own command or config entry, as the docs do', () => {
     const setups = agentSetups('https://hub');
     expect(setups.map((a) => a.label)).toEqual([
       'Claude Code',
@@ -23,7 +23,7 @@ describe('agentSetups', () => {
       'Gemini CLI',
       'Cursor',
       'VS Code',
-      'Windsurf',
+      'Windsurf (Devin Desktop)',
       'Claude Desktop',
     ]);
     const byClient = Object.fromEntries(setups.map((a) => [a.client, a]));
@@ -57,19 +57,27 @@ describe('agentSetups', () => {
     expect(byClient.cursor).toMatchObject({
       after: "Then open Cursor's MCP settings and click Authenticate next to xenon.",
     });
+    // Windsurf is now Devin Desktop, which reads `url` from its own file, as the installer writes it.
     expect(entry('windsurf')).toEqual({
-      file: '~/.codeium/windsurf/mcp_config.json',
-      json: { mcpServers: { xenon: { serverUrl: MCP_URL } } },
+      file: '~/.config/devin/mcp_config.json',
+      json: { mcpServers: { xenon: { url: MCP_URL } } },
     });
-    // Claude Desktop needs the bridge, which isn't out: nothing to copy.
-    expect(byClient['claude-desktop'].kind).toBe('unavailable');
-    expect(JSON.stringify(setups)).not.toMatch(/npx|@xenon-device-management/);
+    expect(byClient.windsurf).toMatchObject({
+      after: "Then open Cascade's MCP settings and click Authenticate next to xenon.",
+    });
+    // Claude Desktop connects through the installer's bridge, which add signs in.
+    expect(byClient['claude-desktop']).toEqual({
+      client: 'claude-desktop',
+      label: 'Claude Desktop',
+      kind: 'command',
+      text: 'npx @xenon-device-management/mcp add --hub https://hub --client claude-desktop',
+      after: expect.stringMatching(/opens this browser for you to sign in.*restart Claude Desktop/),
+    });
   });
 
   it('gives a plain-HTTP hub the same setups, with its own address', () => {
     for (const setup of agentSetups('http://lab-mac:4723')) {
-      if (setup.kind === 'unavailable') continue;
-      expect(setup.text, setup.client).toContain('http://lab-mac:4723/xenon/mcp');
+      expect(setup.text, setup.client).toContain('http://lab-mac:4723');
     }
   });
 
@@ -77,6 +85,18 @@ describe('agentSetups', () => {
     expect((agentSetups('https://hub/')[0] as { text: string }).text).toBe(
       `claude mcp add --transport http xenon ${MCP_URL}`,
     );
+  });
+});
+
+describe('installerSetup', () => {
+  it("gives the installer's command for this hub, whose --hub takes its origin", () => {
+    expect(installerSetup('https://hub/')).toEqual({
+      client: 'installer',
+      label: 'Xenon installer',
+      kind: 'command',
+      text: 'npx @xenon-device-management/mcp add --hub https://hub',
+      after: expect.stringContaining('Node 22.12 or later'),
+    });
   });
 });
 
