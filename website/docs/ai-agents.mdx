@@ -1,6 +1,6 @@
 ---
 title: AI agents (MCP)
-description: "Add your Xenon lab to Claude Code, Codex, Cursor, VS Code, Gemini CLI or Windsurf: the hub serves MCP itself, the agent signs in through your browser, and it can then list, lease and record phones and start Appium sessions as you."
+description: "Add your Xenon lab to Claude Code, Codex, Cursor, VS Code, Gemini CLI, Windsurf or Claude Desktop, with one command from Xenon's installer or by hand: the hub serves MCP itself, the agent signs in through your browser, and it can then list, lease and record phones and start Appium sessions as you."
 ---
 
 import Tabs from '@theme/Tabs';
@@ -16,7 +16,15 @@ Xenon Studio, the IDE extension made for Xenon, isn't publicly available yet. It
 
 ## Quick start
 
-On the dashboard, open **AI agents** in the sidebar. It shows each agent's command, or the entry for its settings file, with your lab's address filled in, and a **Copy** button for each. The address is your hub's origin followed by `/xenon/mcp`, such as `https://xenon.example.com/xenon/mcp`. If the hub has `XENON_PUBLIC_URL` set, it is that URL's origin: an agent must use exactly the address the hub names itself by.
+The quickest way is Xenon's installer, which needs Node 22.12 or later. Give it your lab's address:
+
+```bash
+npx @xenon-device-management/mcp add --hub https://xenon.example.com
+```
+
+It checks that the lab serves MCP, asks which of the agents on your computer to set up, adds the lab to each, and installs Xenon's skills where each agent reads them. Then it says what to do next in each agent, such as signing in. See [Xenon's installer](#xenons-installer) for what else it does.
+
+To add one agent yourself, use its own command or settings file below. On the dashboard, open **AI agents** in the sidebar. It shows each agent's command, or the entry for its settings file, with your lab's address filled in, and a **Copy** button for each. The address is your hub's origin followed by `/xenon/mcp`, such as `https://xenon.example.com/xenon/mcp`. If the hub has `XENON_PUBLIC_URL` set, it is that URL's origin: an agent must use exactly the address the hub names itself by.
 
 <Tabs groupId="agent">
 <TabItem value="claude-code" label="Claude Code" default>
@@ -76,22 +84,30 @@ Add the server to `~/.cursor/mcp.json`:
 Then open Cursor's MCP settings and click **Authenticate** next to `xenon`. Cursor opens your browser for you to sign in.
 
 </TabItem>
-<TabItem value="windsurf" label="Windsurf">
+<TabItem value="windsurf" label="Windsurf (Devin Desktop)">
 
-Add the server to `~/.codeium/windsurf/mcp_config.json`:
+Windsurf is now Devin Desktop. Add the server to `~/.config/devin/mcp_config.json` (`%APPDATA%\devin\mcp_config.json` on Windows):
 
 ```json
 {
   "mcpServers": {
-    "xenon": { "serverUrl": "https://xenon.example.com/xenon/mcp" }
+    "xenon": { "url": "https://xenon.example.com/xenon/mcp" }
   }
 }
 ```
 
+Then open Cascade's MCP settings and click **Authenticate** next to `xenon`. An older Windsurf reads `~/.codeium/windsurf/mcp_config.json` instead, with `serverUrl` in place of `url`.
+
 </TabItem>
 <TabItem value="claude-desktop" label="Claude Desktop">
 
-Claude Desktop connects to a lab through a small bridge on your computer, which it runs over stdio and which signs in and talks to the hub. That bridge is part of Xenon's installer, which isn't published yet (see below). Until it is, use one of the other agents.
+Claude Desktop connects to a lab through a small bridge on your computer, which it runs over stdio and which signs in and talks to the hub. The bridge comes with Xenon's installer:
+
+```bash
+npx @xenon-device-management/mcp add --hub https://xenon.example.com --client claude-desktop
+```
+
+The installer opens your browser for you to sign in. Then restart Claude Desktop.
 
 </TabItem>
 </Tabs>
@@ -100,11 +116,20 @@ These agents change their commands and config files from time to time. If yours 
 
 The first time the agent calls a Xenon tool, it opens your browser to sign in. Ask it something like "list the Xenon phones I can use" to check.
 
-The **AI agents** page gives the same commands and config entries as above, with your lab's address filled in. On a lab on plain HTTP on another computer, it also warns that some agents won't sign in over plain HTTP (see [A lab on plain HTTP](#a-lab-on-plain-http)).
+The **AI agents** page gives the installer's command and the same commands and config entries as above, with your lab's address filled in. On a lab on plain HTTP on another computer, it also warns that some agents won't sign in over plain HTTP (see [A lab on plain HTTP](#a-lab-on-plain-http)).
 
-:::note[The installer]
-Xenon's installer, a separate package from Xenon Studio, will add the lab to any of these agents, Claude Desktop included, and connect an agent that won't sign in over plain HTTP to a lab on another computer. It isn't on npm yet. Until it is, add the agent with its own command or config file, as above.
-:::
+### Xenon's installer
+
+[`@xenon-device-management/mcp`](https://www.npmjs.com/package/@xenon-device-management/mcp) is a separate package from Xenon Studio. Besides `add`, it has:
+
+- **`doctor`** checks the setup and gives the command that fixes each problem. **`list`** shows what is set up.
+- **`update`** brings the entries and skills up to the installer's version. **`remove --client <id>`** or **`remove --all`** takes Xenon out again.
+- **`--with-appium-mcp`** on `add` also adds [`appium-mcp`](#pair-with-appium-mcp), which drives the phones.
+- **`--client <id>`** sets up one agent without asking: `claude-code`, `codex`, `gemini`, `cursor`, `vscode`, `windsurf` or `claude-desktop`.
+
+Claude Code and Codex have been checked end to end with the installer on a real phone: listing phones, leasing one, starting a session and releasing it. For the other agents, it writes what each agent's documentation describes, and `list` says how far each one has been checked.
+
+On a lab on plain HTTP on another computer, the installer connects every agent through its bridge (see [A lab on plain HTTP](#a-lab-on-plain-http)). It asks first.
 
 ## One phone on your desk
 
@@ -338,7 +363,10 @@ Many labs run at an address such as `http://lab-mac:4723`. The hub serves sign-i
 - **Everything travels in the clear** on the network: sign-in codes, access and refresh tokens, and the session tokens in `remoteServerUrl`, as API keys and test traffic already do on such a lab. Anyone who can read the network traffic can use them.
 - **Some agents refuse to sign in over plain HTTP** to another computer, since sign-in expects HTTPS everywhere but on `localhost`.
 
-Put the hub behind HTTPS where you can: a reverse proxy with a certificate, `XENON_PUBLIC_URL` set to its address, and `trustProxy` set for the proxy ([Behind a reverse proxy](#behind-a-reverse-proxy)). Otherwise, give that agent an API credential in a header ([CI and other agents without a browser](#ci-and-other-agents-without-a-browser)).
+Put the hub behind HTTPS where you can: a reverse proxy with a certificate, `XENON_PUBLIC_URL` set to its address, and `trustProxy` set for the proxy ([Behind a reverse proxy](#behind-a-reverse-proxy)). Otherwise:
+
+- **[Xenon's installer](#xenons-installer)** connects such an agent through a bridge on your computer. The agent talks to the bridge on `localhost`, which it accepts, and the bridge signs in and talks to the hub. The bridge encrypts nothing: the traffic between your computer and the lab is as readable as before.
+- **Or give that agent an API credential** in a header ([CI and other agents without a browser](#ci-and-other-agents-without-a-browser)).
 
 ## A lab on a closed network
 

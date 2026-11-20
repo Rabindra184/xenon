@@ -11,7 +11,7 @@ import { useToast } from '../ui/toast';
 import { useAuth } from '../../auth/auth-context';
 import { formatDateTime, formatRelative } from '../../utils/time';
 import { scopeWords } from '../oauth/scopeWords';
-import { AgentSetup, agentSetups, isPlainHttpHub } from './agentCommands';
+import { AgentSetup, agentSetups, installerSetup, isPlainHttpHub } from './agentCommands';
 
 /** The connected agents: none to list with sign-in off, or the server didn't answer. */
 type SignInList = { kind: 'off' } | { kind: 'failed' } | { kind: 'list'; items: AgentSignIn[] };
@@ -203,11 +203,17 @@ function Commands({
             className="mt-0.5 shrink-0 text-[var(--color-warning)]"
           />
           <span>
-            This lab is on plain HTTP. Some agents won&apos;t sign in to a lab on another computer
-            over plain HTTP. Ask your lab admin to put it behind HTTPS.
+            This lab is on plain HTTP. Some agents, Claude Code among them, won&apos;t sign in to a
+            lab on another computer over plain HTTP. Xenon&apos;s installer connects them through a
+            bridge on your computer, but the bridge encrypts nothing: ask your lab admin to put the
+            lab behind HTTPS.
           </span>
         </p>
       )}
+      <div className="mb-4 border-b border-[var(--border)] pb-4">
+        <Setup setup={installerSetup(hub)} copied={copied === 'installer'} onCopy={onCopy} />
+      </div>
+      <p className="mb-3 text-sm text-[var(--text-muted)]">Or add one agent yourself:</p>
       <ul aria-labelledby="agent-commands" className="space-y-4">
         {agentSetups(hub).map((setup) => (
           <li key={setup.client}>
@@ -233,37 +239,25 @@ function Setup({
     <>
       <div className="mb-1.5 flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold text-[var(--text)]">{label}</h3>
-        {setup.kind !== 'unavailable' && (
-          <Button
-            variant="secondary"
-            size="sm"
-            aria-label={`Copy the ${label} ${setup.kind === 'config' ? 'entry' : 'command'}`}
-            onClick={() => onCopy(client, setup.text)}
-          >
-            {copied ? (
-              <Check size={14} aria-hidden="true" />
-            ) : (
-              <Copy size={14} aria-hidden="true" />
-            )}
-            {copied ? 'Copied' : 'Copy'}
-          </Button>
-        )}
+        <Button
+          variant="secondary"
+          size="sm"
+          aria-label={`Copy the ${label} ${setup.kind === 'config' ? 'entry' : 'command'}`}
+          onClick={() => onCopy(client, setup.text)}
+        >
+          {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+          {copied ? 'Copied' : 'Copy'}
+        </Button>
       </div>
-      {setup.kind === 'unavailable' ? (
-        <p className="text-sm text-[var(--text-muted)]">{setup.note}</p>
-      ) : (
-        <>
-          {setup.kind === 'config' && (
-            <p className="mb-1.5 text-sm text-[var(--text-muted)]">
-              Add this to <code className="font-mono text-mono-data">{setup.file}</code>:
-            </p>
-          )}
-          <code className="block whitespace-pre-wrap break-all rounded-md border border-[var(--border)] bg-[var(--surface-sunken)] px-3 py-2 font-mono text-mono-data text-[var(--text)]">
-            {setup.text}
-          </code>
-          {setup.after && <p className="mt-1.5 text-sm text-[var(--text-muted)]">{setup.after}</p>}
-        </>
+      {setup.kind === 'config' && (
+        <p className="mb-1.5 text-sm text-[var(--text-muted)]">
+          Add this to <code className="font-mono text-mono-data">{setup.file}</code>:
+        </p>
       )}
+      <code className="block whitespace-pre-wrap break-all rounded-md border border-[var(--border)] bg-[var(--surface-sunken)] px-3 py-2 font-mono text-mono-data text-[var(--text)]">
+        {setup.text}
+      </code>
+      {setup.after && <p className="mt-1.5 text-sm text-[var(--text-muted)]">{setup.after}</p>}
     </>
   );
 }
