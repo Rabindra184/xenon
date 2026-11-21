@@ -2643,9 +2643,15 @@ agent what `website/docs/ai-agents.mdx` gives (`agentSetups` in
 Cursor and Windsurf (Devin Desktop, `~/.config/devin/mcp_config.json`) the
 entry for their settings file; Claude Desktop the installer's command, since
 its bridge comes with the installer; keep the two in step), a warning on a
-plain-HTTP hub that isn't loopback that some agents won't sign in over plain
-HTTP and that the installer's bridge encrypts nothing, and Connected agents with Sign out
-(confirmed in `ui/Modal`). The consent page
+plain-HTTP hub with sign-in on (`plainHttpHub`) that names the installer's
+bridge and says it encrypts nothing, and Connected agents with Sign out
+(confirmed in `ui/Modal`). The Claude desktop app opens no sign-in page that
+isn't HTTPS, loopback included ("Refused to open sign-in URL for xenon: must
+be https"), so the warning names it on a loopback hub too, and Claude Code's
+note offers the installer or the access key and token as headers. A Member's
+own token has no `devices`, so an agent given one can't lease. Through 2.39
+the page and the guide said plain HTTP was fine on localhost, for every
+agent. The consent page
 (`web/src/components/oauth/ConsentPage.tsx`) is a top-level route in
 `AuthShell`, not the dashboard's shell, behind `RouteGuard`; it shows the
 redirect URI's host, since the agent picks its own name, and navigates only

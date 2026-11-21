@@ -137,7 +137,7 @@ describe('AgentsPage', () => {
     ).toHaveTextContent('Copied');
   });
 
-  it('on a plain-HTTP lab on another computer, warns that some agents need HTTPS', async () => {
+  it('on a plain-HTTP lab on another computer, warns that the desktop app and some agents need HTTPS', async () => {
     answers['GET /xenon/api/capabilities'] = {
       status: 200,
       body: {
@@ -153,13 +153,16 @@ describe('AgentsPage', () => {
     ).toBeInTheDocument();
     const note = screen.getByRole('note');
     expect(note).toHaveTextContent(/plain HTTP/);
+    expect(note).toHaveTextContent(/Claude desktop app/);
+    expect(note).toHaveTextContent(/another computer/);
     expect(note).toHaveTextContent(/HTTPS/);
     // The installer's bridge is a way through, but it encrypts nothing.
     expect(note).toHaveTextContent(/installer/);
     expect(note).toHaveTextContent(/encrypts nothing/);
+    expect(commands).toHaveTextContent(/--header "x-xenon-access-key: ACCESS_KEY"/);
   });
 
-  it('gives no warning for a lab on this computer, where agents accept plain HTTP', async () => {
+  it("on a plain-HTTP lab on this computer, warns that the Claude desktop app won't sign in", async () => {
     answers['GET /xenon/api/capabilities'] = {
       status: 200,
       body: {
@@ -167,8 +170,42 @@ describe('AgentsPage', () => {
       },
     };
     renderPage();
-    await screen.findByRole('list', { name: /add xenon to your agent/i });
+    const commands = await screen.findByRole('list', { name: /add xenon to your agent/i });
+    const note = screen.getByRole('note');
+    expect(note).toHaveTextContent(/Claude desktop app/);
+    expect(note).toHaveTextContent(/even on this computer/);
+    expect(note).toHaveTextContent(/installer/);
+    expect(note).not.toHaveTextContent(/another computer/);
+    expect(commands).toHaveTextContent(/--header "x-xenon-token: TOKEN"/);
+  });
+
+  it('gives no plain-HTTP warning on a lab with sign-in off: no agent signs in there', async () => {
+    auth.authDisabled = true;
+    answers['GET /xenon/api/capabilities'] = {
+      status: 200,
+      body: {
+        features: { mcpServer: { path: '/xenon/mcp', url: 'http://lab-mac:4723/xenon/mcp' } },
+      },
+    };
+    renderPage();
+    const commands = await screen.findByRole('list', { name: /add xenon to your agent/i });
     expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    expect(commands).not.toHaveTextContent(/--header/);
+  });
+
+  it('gives no warning for a lab on https', async () => {
+    answers['GET /xenon/api/capabilities'] = {
+      status: 200,
+      body: {
+        features: {
+          mcpServer: { path: '/xenon/mcp', url: 'https://xenon.example.com/xenon/mcp' },
+        },
+      },
+    };
+    renderPage();
+    const commands = await screen.findByRole('list', { name: /add xenon to your agent/i });
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    expect(commands).not.toHaveTextContent(/--header/);
   });
 
   it('AgentsPage lists my connected agents and Revoke calls DELETE /oauth/grants/:id', async () => {
