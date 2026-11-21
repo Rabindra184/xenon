@@ -454,6 +454,24 @@ describe('MCP session capabilities and recording tools (integration)', function 
     });
   });
 
+  it('takes capabilities as a JSON string too, as appium-mcp takes its own', async () => {
+    const { answer } = await capabilities({
+      capabilities: JSON.stringify({ platformName: 'Android', 'appium:appPackage': 'com.x' }),
+    });
+    expect(answer.capabilities.alwaysMatch).to.include({
+      platformName: 'Android',
+      'appium:appPackage': 'com.x',
+    });
+
+    for (const notAnObject of ['not json', '[1, 2]', '"text"']) {
+      const { result } = await callTool(await memberBearer(), 'xenon_session_capabilities', {
+        capabilities: notAnObject,
+      });
+      expect(result.isError, notAnObject).to.equal(true);
+      expect(answerOf(result).error).to.equal('bad_request');
+    }
+  });
+
   it('refuses a whole W3C request as capabilities, which would nest inside alwaysMatch', async () => {
     const { result } = await callTool(await memberBearer(), 'xenon_session_capabilities', {
       capabilities: { alwaysMatch: { platformName: 'Android' }, firstMatch: [{}] },

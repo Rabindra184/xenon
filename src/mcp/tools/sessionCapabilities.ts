@@ -68,7 +68,7 @@ const sessionCapabilitiesParams = z.object({
     .optional()
     .describe('The leaseToken xenon_acquire_device answered. Pass it with lockId, or neither.'),
   capabilities: z
-    .record(z.string(), z.unknown())
+    .union([z.record(z.string(), z.unknown()), z.string()])
     .optional()
     .describe(
       "Your app's own capabilities, as one flat object of W3C names, for example " +
@@ -76,7 +76,7 @@ const sessionCapabilitiesParams = z.object({
         '"appium:appPackage":"com.android.settings","appium:appActivity":".Settings"}. ' +
         "They are put into the answer's capabilities.alwaysMatch, so the answer needs no editing. " +
         "A capability the lease sets (the phone, its ports) keeps the lease's value. " +
-        'Not {alwaysMatch, firstMatch}: only what goes inside alwaysMatch.',
+        'Not {alwaysMatch, firstMatch}: only what goes inside alwaysMatch. The same object as a JSON string is taken too.',
     ),
 });
 
@@ -182,6 +182,31 @@ function sameValue(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+/**
+ * The `capabilities` argument as an object. appium-mcp's own create-session
+ * tool takes its capabilities as a JSON string, so an agent passes one here
+ * by habit, and a client holding an older list of this tool's arguments
+ * sends the object as text: both are read as the object they spell.
+ */
+function flatCapabilities(
+  given: Record<string, unknown> | string | undefined,
+): Record<string, unknown> {
+  if (given === undefined) return {};
+  if (typeof given !== 'string') return given;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(given);
+  } catch {
+    parsed = undefined;
+  }
+  if (isOptionsObject(parsed)) return parsed;
+  throw new ToolRefusal(
+    'bad_request',
+    'capabilities must be one flat object of capabilities, or that object as a JSON string.',
+    400,
+  );
+}
+
 /** `capabilities` given as a whole W3C request, which would nest inside alwaysMatch. */
 function looksLikeW3cRequest(app: Record<string, unknown>): boolean {
   return 'alwaysMatch' in app || 'firstMatch' in app;
@@ -256,7 +281,7 @@ export const sessionCapabilitiesTool = defineTool({
         400,
       );
     }
-    const app = args.capabilities ?? {};
+    const app = flatCapabilities(args.capabilities);
     if (looksLikeW3cRequest(app)) {
       throw new ToolRefusal(
         'bad_request',

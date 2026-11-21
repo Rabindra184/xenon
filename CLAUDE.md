@@ -2481,7 +2481,8 @@ protocol error.
 - `xenon_session_capabilities` mints a `xenon-session` token
   (`mintSessionToken`, with the caller's `gid`), and with a lease puts member
   0's capabilities, `leaseId`, `leaseToken` and `leaseMember` in
-  `xe:options`. Its optional `capabilities` (one flat object, the app's own;
+  `xe:options`. Its optional `capabilities` (one flat object, the app's own,
+  or that object as a JSON string, which is how appium-mcp takes its own;
   `{ alwaysMatch, firstMatch }` is `bad_request`) go into `alwaysMatch` under
   those (`appAndLabCapabilities`), so the answer goes to appium-mcp's create
   unedited. The lease's values win, and the caller's `accessKey`, `token`,

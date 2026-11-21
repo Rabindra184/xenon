@@ -323,7 +323,7 @@ Errors: `not_found` (no such phone you may use), `ambiguous_phone` (two phones s
 }
 ```
 
-`capabilities` is optional: your app's own capabilities, as one flat object (what goes inside `alwaysMatch`, not `{ alwaysMatch, firstMatch }`). They are put into the answer's `alwaysMatch`, so the agent doesn't edit the answer before starting the session. Two rules keep the session yours and on the right phone:
+`capabilities` is optional: your app's own capabilities, as one flat object (what goes inside `alwaysMatch`, not `{ alwaysMatch, firstMatch }`), or that object as a JSON string, as `appium-mcp` takes its own. They are put into the answer's `alwaysMatch`, so the agent doesn't edit the answer before starting the session. Two rules keep the session yours and on the right phone:
 
 - A capability the lease sets (the phone's `appium:udid`, its ports) keeps the lease's value.
 - In `xe:options`, your other options (`healingTiers`, `name`, …) are kept, but `accessKey`, `token`, `sessionToken`, `leaseId`, `leaseToken` and `leaseMember` are always the ones this tool gives.
