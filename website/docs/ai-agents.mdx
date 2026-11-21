@@ -246,8 +246,8 @@ Each tool needs one MCP scope. A tool outside the scopes the agent holds isn't l
 [`appium-mcp`](https://github.com/appium/appium-mcp) drives a phone: it taps, types, reads the screen and finds elements. Xenon gives it the lab. With both added to your agent:
 
 1. Optionally, `xenon_acquire_device` leases a phone, so nobody else takes it while the agent works.
-2. `xenon_session_capabilities` gives the agent what `appium-mcp`'s create-session tool needs: `remoteServerUrl` (this hub's WebDriver address) and `capabilities`, which carry a session token that makes the session yours, and the lease when you pass its `lockId` and `leaseToken`.
-3. The agent passes both to `appium-mcp`'s create-session tool unchanged, adding what the app needs (`platformName`, `appium:app` and so on).
+2. `xenon_session_capabilities` gives the agent what `appium-mcp`'s create-session tool needs: `remoteServerUrl` (this hub's WebDriver address) and `capabilities`, which carry a session token that makes the session yours, and the lease when you pass its `lockId` and `leaseToken`. Give it your app's own capabilities too (`capabilities`), and its answer goes to the create-session tool with nothing to add.
+3. The agent passes both to `appium-mcp`'s create-session tool unchanged. If it didn't give `xenon_session_capabilities` the app's capabilities, it adds them inside `alwaysMatch` now (`platformName`, `appium:app` and so on).
 
 The session then runs on the lab like any test of yours: its commands go through the hub, so autowait, self-healing, the command log, video and device logs apply, and it appears on the **Sessions** page under your name. Team rules and leases apply to it as to any session.
 
@@ -311,10 +311,26 @@ Errors: `not_found` (no such phone you may use), `ambiguous_phone` (two phones s
 `appium:use`. What `appium-mcp`'s create-session tool needs to start a session as you ([Pair with appium-mcp](#pair-with-appium-mcp)). Pass `lockId` and `leaseToken` from `xenon_acquire_device` to start it on the leased phone, or neither.
 
 ```json
-{ "lockId": "lease_7f3a…", "leaseToken": "…" }
+{
+  "lockId": "lease_7f3a…",
+  "leaseToken": "…",
+  "capabilities": {
+    "platformName": "Android",
+    "appium:automationName": "UiAutomator2",
+    "appium:appPackage": "com.android.settings",
+    "appium:appActivity": ".Settings"
+  }
+}
 ```
 
-Answers `{ remoteServerUrl, capabilities, expiresAt }`, `capabilities` being `{ alwaysMatch, firstMatch }` with `xe:options.sessionToken`, and with a lease its `leaseId`, `leaseToken` and `leaseMember`; `expiresAt` is when the session token ends, in epoch milliseconds. A lease still waiting for its phone is `lease_waiting`.
+`capabilities` is optional: your app's own capabilities, as one flat object (what goes inside `alwaysMatch`, not `{ alwaysMatch, firstMatch }`), or that object as a JSON string, as `appium-mcp` takes its own. They are put into the answer's `alwaysMatch`, so the agent doesn't edit the answer before starting the session. Two rules keep the session yours and on the right phone:
+
+- A capability the lease sets (the phone's `appium:udid`, its ports) keeps the lease's value.
+- In `xe:options`, your other options (`healingTiers`, `name`, …) are kept, but `accessKey`, `token`, `sessionToken`, `leaseId`, `leaseToken` and `leaseMember` are always the ones this tool gives.
+
+When something of yours was left out for either reason, the answer lists the names in `ignored`. One case is taken as you meant it: `xenon_acquire_device`'s own `appiumCapabilities`, passed as `capabilities` without `lockId` and `leaseToken`, start the session on that lease.
+
+Answers `{ remoteServerUrl, capabilities, expiresAt, ignored? }`, `capabilities` being `{ alwaysMatch, firstMatch }` with `xe:options.sessionToken`, and with a lease its `leaseId`, `leaseToken` and `leaseMember`; `expiresAt` is when the session token ends, in epoch milliseconds. A lease still waiting for its phone is `lease_waiting`.
 
 ### `xenon_selector_health`
 
@@ -388,5 +404,6 @@ Some agents name themselves by a URL instead of registering with the hub: the hu
 - **What the agent does is on record like any test.** With `enableDashboard` on, its sessions appear on the **Sessions** page under your name, with their commands, video and device logs.
 - **Each tool call is logged** in the hub's event log (`mcp_tool_call`: the user, the tool, how it went and how long it took; never its arguments or answer) and is a span when the hub exports traces. An MCP server of your own can also report its tool calls to `POST /xenon/api/audit/events`, with a key that has the `admin` scope.
 - **Where it is served.** A hub or a standalone server serves `/xenon/mcp`, whether or not `enableDashboard` is on. A node doesn't: its phones are reached through its hub. With auth disabled there is no sign-in, and the tools act as the synthetic super admin, as REST does.
+- **The agent is told the order.** When it connects, the hub tells the agent how the tools are used: the order above, to delete the session and release the phone even after a failure, and never to repeat the URL, capabilities or lease token to you. It names only the tools your sign-in gives the agent, and every tool's arguments say what they take.
 - **What clients can check.** `GET /xenon/api/capabilities` reports `features.mcpServer` (`{ path, url, oauth, contractVersion, tools }`, `oauth` being false with auth disabled) on a server that serves MCP, and `features.mcpScopedTokens` on one that takes the MCP scopes above. `/xenon/api/sdk/version` lists `mcp-server`.
 - **How it answers.** Each call is a POST answered with JSON, with no MCP session kept on the hub, so a restart loses nothing. GET and DELETE answer `405`.

@@ -111,7 +111,7 @@ export function buildCapabilities(req?: Request) {
       // The lab's tools for AI coding agents over MCP (src/mcp/mcpEndpoint.ts),
       // served at `path` on a hub or standalone server, never on a node, which
       // doesn't report it. `contractVersion` changes when a tool's name or
-      // arguments do.
+      // arguments do (2: xenon_session_capabilities takes `capabilities`).
       ...(servesMcp(Container.get(PluginContext).pluginArgs)
         ? {
             mcpServer: {
@@ -120,7 +120,7 @@ export function buildCapabilities(req?: Request) {
               // Browser sign-in for agents: none with auth disabled, where
               // the tools need no credential and the sign-in routes 404.
               oauth: config.authDisabled !== true,
-              contractVersion: 1,
+              contractVersion: 2,
               tools: toolNames(),
             },
           }

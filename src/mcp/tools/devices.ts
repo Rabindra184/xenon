@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineTool } from '../tool';
+import { AUTH_TOKEN_PARAM, defineTool } from '../tool';
 import { invokeApi } from '../invokeApi';
 import { answerOf, ToolRefusal } from '../toolCall';
 import type { McpCaller } from '../mcpCredential';
@@ -69,10 +69,18 @@ async function devicesOf(caller: McpCaller): Promise<RawDevice[]> {
 }
 
 const listDevicesParams = z.object({
-  authToken: z.string().optional(),
-  platform: z.enum(['android', 'ios']).optional(),
-  status: z.enum(['free', 'busy', 'offline']).optional(),
-  name: z.string().optional(),
+  authToken: AUTH_TOKEN_PARAM,
+  platform: z.enum(['android', 'ios']).optional().describe('Only phones of this platform.'),
+  status: z
+    .enum(['free', 'busy', 'offline'])
+    .optional()
+    .describe(
+      'free: neither busy nor offline, so it can be leased. busy: in a session, a lease, a live preview or a recording. offline: not reachable.',
+    ),
+  name: z
+    .string()
+    .optional()
+    .describe('Only phones whose name contains this text, in any letter case.'),
 });
 
 /** `xenon_list_devices`: `GET /devices` as the caller, filtered and reshaped. */
@@ -155,11 +163,23 @@ const WRONG_LEASE_KEPT =
 const leasePath = (lockId: string) => `/sdk/leases/${encodeURIComponent(lockId)}`;
 
 const acquireDeviceParams = z.object({
-  authToken: z.string().optional(),
-  udid: z.string(),
-  host: z.string().optional(),
+  authToken: AUTH_TOKEN_PARAM,
+  udid: z.string().describe("The phone's udid, from xenon_list_devices."),
+  host: z
+    .string()
+    .optional()
+    .describe(
+      "The phone's host from xenon_list_devices, exactly as listed. Needed only when two phones share the udid (ambiguous_phone).",
+    ),
   /** How long the lease lasts; 15 minutes when absent. LeaseService.create keeps it within 1 minute to 24 hours. */
-  durationMs: z.number().int().positive().optional(),
+  durationMs: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      'How long the lease lasts, in milliseconds: 60000 (1 minute) to 86400000 (24 hours). 15 minutes when left out.',
+    ),
 });
 
 /**
@@ -239,10 +259,10 @@ export const acquireDeviceTool = defineTool({
 });
 
 const releaseDeviceParams = z.object({
-  authToken: z.string().optional(),
-  udid: z.string(),
-  lockId: z.string(),
-  leaseToken: z.string(),
+  authToken: AUTH_TOKEN_PARAM,
+  udid: z.string().describe("The leased phone's udid, as xenon_acquire_device answered it."),
+  lockId: z.string().describe('The lockId xenon_acquire_device answered.'),
+  leaseToken: z.string().describe('The leaseToken xenon_acquire_device answered.'),
 });
 
 /** `xenon_release_device`: `DELETE /sdk/leases/:id` with the lease token. */
@@ -267,10 +287,17 @@ export const releaseDeviceTool = defineTool({
 });
 
 const extendDeviceParams = z.object({
-  authToken: z.string().optional(),
-  lockId: z.string(),
-  leaseToken: z.string(),
-  durationMs: z.number().int().positive().optional(),
+  authToken: AUTH_TOKEN_PARAM,
+  lockId: z.string().describe('The lockId xenon_acquire_device answered.'),
+  leaseToken: z.string().describe('The leaseToken xenon_acquire_device answered.'),
+  durationMs: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      'How long from now the lease should last at least, in milliseconds. 15 minutes when left out.',
+    ),
 });
 
 /**

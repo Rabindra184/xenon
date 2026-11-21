@@ -7,6 +7,7 @@ import type { IPluginArgs } from '../interfaces/IPluginArgs';
 import { McpCaller, resolveMcpCaller } from './mcpCredential';
 import { toolsFor } from './toolRegistry';
 import { runTool } from './toolCall';
+import { instructionsFor } from './instructions';
 import { RESOURCE_METADATA_PATH, publicOrigin, servesMcp } from './publicOrigin';
 import pkg from '../../package.json';
 
@@ -102,8 +103,12 @@ async function handlePost(req: Request, res: Response): Promise<void> {
 
 /** An McpServer holding the tools this caller may use. */
 function serverFor(caller: McpCaller): McpServer {
-  const server = new McpServer({ name: 'xenon', version: String(pkg.version) });
-  for (const tool of toolsFor(caller)) {
+  const tools = toolsFor(caller);
+  const server = new McpServer(
+    { name: 'xenon', version: String(pkg.version) },
+    { instructions: instructionsFor(tools) },
+  );
+  for (const tool of tools) {
     server.registerTool(
       tool.name,
       {

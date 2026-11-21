@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineTool } from '../tool';
+import { AUTH_TOKEN_PARAM, defineTool } from '../tool';
 import { invokeApi } from '../invokeApi';
 import { answerOf } from '../toolCall';
 import { callerOrigin } from '../publicOrigin';
@@ -19,8 +19,13 @@ interface StartRecordingAnswer {
 }
 
 const startRecordingParams = z.object({
-  authToken: z.string().optional(),
-  udids: z.array(z.union([z.string(), z.object({ udid: z.string(), host: z.string() })])).min(1),
+  authToken: AUTH_TOKEN_PARAM,
+  udids: z
+    .array(z.union([z.string(), z.object({ udid: z.string(), host: z.string() })]))
+    .min(1)
+    .describe(
+      'The phones to record, at least one: each a udid, or { udid, host } when two servers have a phone with that udid.',
+    ),
 });
 
 /** `xenon_start_recording`: `POST /recordings` with the udids, as the caller. */
@@ -45,8 +50,8 @@ export const startRecordingTool = defineTool({
 });
 
 const stopRecordingParams = z.object({
-  authToken: z.string().optional(),
-  groupId: z.string(),
+  authToken: AUTH_TOKEN_PARAM,
+  groupId: z.string().describe('The groupId xenon_start_recording answered.'),
 });
 
 /**

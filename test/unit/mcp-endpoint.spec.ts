@@ -124,6 +124,68 @@ describe('the MCP endpoint (/xenon/mcp)', () => {
     }
   });
 
+  it('says how the tools are used, naming only the tools the caller holds', async () => {
+    // The key's scopes are read and devices: no appium:use, so no session tool.
+    const client = await connect(keyPair);
+    try {
+      const { tools } = await client.listTools();
+      const held = tools.map((t) => t.name);
+      expect(held).to.include('xenon_acquire_device');
+      expect(held).to.not.include('xenon_session_capabilities');
+
+      const instructions = client.getInstructions() ?? '';
+      expect(instructions).to.include('xenon_list_devices');
+      expect(instructions).to.include('xenon_release_device');
+      expect(instructions).to.not.include('xenon_session_capabilities');
+      const named = instructions.match(/xenon_[a-z_]+/g) ?? [];
+      for (const name of named) expect(held, name).to.include(name);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('gives the whole order, with the secrets rule, to a caller holding every tool', async () => {
+    config.authDisabled = true;
+    const client = await connect();
+    try {
+      const instructions = client.getInstructions() ?? '';
+      const order = [
+        'xenon_lab_info',
+        'xenon_list_devices',
+        'xenon_acquire_device',
+        'xenon_session_capabilities',
+        'xenon_release_device',
+      ].map((name) => instructions.indexOf(name));
+      expect(order.every((at) => at >= 0)).to.equal(true);
+      expect([...order].sort((a, b) => a - b)).to.deep.equal(order);
+      expect(instructions).to.include('never repeat them to the user');
+      expect(instructions).to.include('also after a failure');
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('describes every argument of every tool', async () => {
+    config.authDisabled = true;
+    const client = await connect();
+    try {
+      const { tools } = await client.listTools();
+      const bare: string[] = [];
+      for (const tool of tools) {
+        const properties = (tool.inputSchema.properties ?? {}) as Record<
+          string,
+          { description?: string }
+        >;
+        for (const [name, schema] of Object.entries(properties)) {
+          if (!schema.description) bare.push(`${tool.name}.${name}`);
+        }
+      }
+      expect(bare).to.deep.equal([]);
+    } finally {
+      await client.close();
+    }
+  });
+
   it('takes a xenon-mcp bearer token', async () => {
     const keys = await keyService();
     Container.set(JwtKeyService, keys);

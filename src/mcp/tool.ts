@@ -1,4 +1,4 @@
-import type { z } from 'zod';
+import { z } from 'zod';
 import { mcpScopesAllowedBy } from '../services/token/mcpScopes';
 import type { McpCaller } from './mcpCredential';
 
@@ -16,6 +16,16 @@ export interface XenonTool {
   annotations: { readOnlyHint: boolean; destructiveHint: boolean };
   run(args: unknown, caller: McpCaller): Promise<unknown>;
 }
+
+/**
+ * `authToken`, which every tool accepts for prompts and skills written for
+ * Xenon Studio's tools, and ignores: the caller is the one `/xenon/mcp`
+ * signed in.
+ */
+export const AUTH_TOKEN_PARAM = z
+  .string()
+  .optional()
+  .describe('Not used: you are already signed in. Leave it out.');
 
 export function defineTool<A>(def: {
   name: string;

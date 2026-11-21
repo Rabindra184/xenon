@@ -2458,6 +2458,16 @@ protocol error.
   symbol (`mcpContextOf` reads it). `authMiddleware`, per-command auth and
   `csrfMiddleware` take it; `sdk-leases.ts` reads it to make a lease
   heartbeat-free.
+- **What an agent is told** (`instructions.ts`, `instructionsFor`): the
+  `instructions` `initialize` answers, built from the caller's own tools, so
+  it names none they can't call: the order (lab info, list, lease, session
+  capabilities, appium-mcp's create, delete, release), cleaning up after a
+  failure too, and never repeating `remoteServerUrl`, `capabilities` or
+  `leaseToken`. Every argument of every tool has a description
+  (`mcp-endpoint.spec.ts` fails on one without); `authToken` is
+  `AUTH_TOKEN_PARAM`. The tool descriptions stay Studio's. Through 2.39 the
+  server sent no instructions and the arguments were bare, so the order lived
+  only in the `xenon-lab` skill.
 - `xenon_healing_events` asks `GET /session/:id` first, so an unknown or
   hidden session is REST's not-found (Studio answered `[]`).
   `xenon_execute_script` needs `sessionId` (the hub has no current session),
@@ -2471,7 +2481,18 @@ protocol error.
 - `xenon_session_capabilities` mints a `xenon-session` token
   (`mintSessionToken`, with the caller's `gid`), and with a lease puts member
   0's capabilities, `leaseId`, `leaseToken` and `leaseMember` in
-  `xe:options`. With per-command auth on, `remoteServerUrl` carries the token
+  `xe:options`. Its optional `capabilities` (one flat object, the app's own,
+  or that object as a JSON string, which is how appium-mcp takes its own;
+  `{ alwaysMatch, firstMatch }` is `bad_request`) go into `alwaysMatch` under
+  those (`appAndLabCapabilities`), so the answer goes to appium-mcp's create
+  unedited. The lease's values win, and the caller's `accessKey`, `token`,
+  `sessionToken`, `leaseId`, `leaseToken` and `leaseMember` are dropped from
+  `xe:options` and `xenon:options` (`LAB_OPTION_FIELDS`): a pair passed there
+  would otherwise be read beside the session token at the create. `ignored`
+  names what lost, never its value. With no `lockId`/`leaseToken` arguments
+  the lease is the one the caller's `xe:options` carries (`leaseOf`:
+  acquire's own `appiumCapabilities` pasted in), and a lease id without its
+  token is `bad_request`. `contractVersion` is 2 for it. With per-command auth on, `remoteServerUrl` carries the token
   as Basic `xenon-session:<token>`. The token lives `XENON_MCP_TOKEN_TTL_SEC`
   and the tool answers `expiresAt` (epoch ms). For a grant-bound caller
   (`grantId`) that is the whole TTL, not the access token's remaining hour:
