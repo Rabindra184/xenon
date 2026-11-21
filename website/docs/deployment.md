@@ -1,6 +1,6 @@
 ---
 title: Production deployment
-description: Run Xenon for a team, as one server or a hub with nodes. Where the data lives and how to back it up, a process manager, HTTPS behind a reverse proxy, sizing and logs.
+description: Run Xenon for a team, as one server or a hub with nodes. Where the data lives and how to back it up, a process manager, HTTPS behind a reverse proxy (nginx, Caddy, or one computer), sizing and logs.
 ---
 
 This page is for running Xenon where other people depend on it. It covers the two ways to lay out a lab, where Xenon keeps its data and how to back it up, keeping it running, putting it behind HTTPS, sizing it, and logging. For locking it down, read [Hardening](./hardening.md) as well.
@@ -15,7 +15,7 @@ A hub can have phones of its own too. Either way, each server has its own databa
 ## Before you open it to others
 
 - Set the first super admin's email and password before the first start, so the default `admin@xenon.local` / `Admin@123` never exists on a reachable server: `XENON_BOOTSTRAP_ADMIN_EMAIL` and `XENON_BOOTSTRAP_ADMIN_PASSWORD`. Xenon reads them only when it creates its first user.
-- Serve Xenon over HTTPS: see [HTTPS behind a reverse proxy](#https-behind-a-reverse-proxy).
+- Serve Xenon over HTTPS, and set `trustProxy` for the proxy: see [HTTPS behind a reverse proxy](#https-behind-a-reverse-proxy).
 - Set `XENON_PUBLIC_URL` to the address people use, such as `https://xenon.example.com`. Password reset links point there, and without it Xenon emails none: see [A forgotten password](./authentication.md#a-forgotten-password).
 - Turn on `XENON_REQUIRE_SESSION_TOKEN`, so every session has an owner, and on a hub `XENON_REQUIRE_COMMAND_AUTH`, so every command is checked. Per-command checks need every client to send its credentials with every command, and the Kotlin SDK doesn't: see [Check every command](./authentication.md#check-every-command) and [Hardening](./hardening.md).
 - If pipelines will lease a node's phones through the hub, run the nodes on the same release as the hub: the hub reserves a node phone's ports with a call it signs, which a node on 2.20 or earlier doesn't know. Nothing needs setting on the hub. See [Leases for CI](./leases.md#what-you-need).
@@ -107,7 +107,7 @@ Xenon addresses its servers as `http://`, so serve HTTPS with a reverse proxy su
 - **Pass WebSocket upgrades.** The dashboard's live updates use `/socket.io/`, and the live preview and logs use sockets under `/xenon/api/control/`. Without them, socket.io falls back to polling, the Android H.264 preview to MJPEG, and live logs stop.
 - **Keep the `Host` header, port included.** The dashboard's requests that change something are accepted only when their `Origin` or `Referer` matches the `Host` the server sees, and that comparison includes the port. In nginx, `$http_host` passes the header as the browser sent it, port and all, where `$host` drops the port. If the proxy rewrites `Host`, the dashboard answers `403` for every save. Either keep it, or list the address people use in `XENON_ALLOWED_ORIGINS`, a comma-separated list of origins or hosts, such as `https://xenon.example.com`.
 - **Set `X-Forwarded-Proto`.** The sign-in cookie is marked `Secure` only when Xenon sees HTTPS, either directly or from `X-Forwarded-Proto: https`.
-- **Set `X-Forwarded-For`, and overwrite any value a client sends.** Xenon limits sign-in attempts per client address (5 in 5 minutes by default), and takes the address from the first value of that header. Without it every user behind the proxy shares one limit, and one that a client could set would let it dodge the limit.
+- **Set `X-Forwarded-For`, overwriting any value a client sends, and set `trustProxy` for the proxy.** Xenon limits sign-in attempts per caller address (5 in 5 minutes by default), and agents' sign-ins have per-address limits of their own. It reads the address from `X-Forwarded-For` only as far as the `trustProxy` option, or `XENON_TRUST_PROXY`, trusts the proxies in front of it: a number of hops such as `1`, the proxy's address or subnet, or `loopback` when the proxy runs on the same machine. Unset, every caller counts as the proxy's one address, so the whole lab shares one limit. Avoid `true`: it trusts the left-most entry, which a caller that reaches Xenon around the proxy writes for itself, and can then change with every attempt.
 - **Pass the credential headers unchanged:** `x-xenon-access-key`, `x-xenon-token` and `Authorization`.
 - **Allow long requests.** Previews and live logs stay open as long as someone watches. Uploading an app to install on a phone can be as large as 4 GB. Session creation can take minutes the first time a driver installs on a phone. Raise the proxy's body-size and timeout limits to match, and turn off buffering of responses for the preview and of request bodies for large uploads.
 
@@ -151,7 +151,72 @@ server {
 }
 ```
 
-Set `XENON_PUBLIC_URL=https://xenon.example.com` in Xenon's environment, so the reset links it sends point at the proxy. Nodes then use the public address, `--plugin-xenon-hub=https://xenon.example.com`, and check its certificate. The hub reaches each node over plain HTTP at the node's own address, so keep nodes on a private network: see [Hub and nodes](./hub-and-nodes.md#security).
+Then tell Xenon about the proxy:
+
+- **`trustProxy`** in its configuration, here `loopback` since nginx runs on the same machine (or `XENON_TRUST_PROXY=loopback`). See the list above.
+- **`XENON_PUBLIC_URL=https://xenon.example.com`** in its environment. The reset links it sends point there, and so does the address the hub gives AI agents to sign in with: see [AI agents](./ai-agents.mdx#behind-a-reverse-proxy).
+
+Nodes then use the public address, `--plugin-xenon-hub=https://xenon.example.com`, and check its certificate. The hub reaches each node over plain HTTP at the node's own address, so keep nodes on a private network: see [Hub and nodes](./hub-and-nodes.md#security).
+
+### Caddy
+
+[Caddy](https://caddyserver.com) does what the list above asks without being told: it keeps the `Host` header, sets `X-Forwarded-For` and `X-Forwarded-Proto` itself (ignoring what a client sends), passes WebSocket upgrades, and sets no limit on upload size or on how long a response takes. With a domain name that points at the machine, and ports 80 and 443 reachable from the internet, it also gets and renews a certificate by itself:
+
+```
+xenon.example.com {
+	reverse_proxy 127.0.0.1:4723 {
+		flush_interval -1
+	}
+}
+```
+
+`flush_interval -1` passes the live preview's frames on as they come. Set `trustProxy` to `loopback` and `XENON_PUBLIC_URL` to the domain's address, as for nginx.
+
+### HTTPS on one computer
+
+Some AI agents sign in only over HTTPS, even to a lab on the same computer: the Claude desktop app is one (see [A lab on plain HTTP](./ai-agents.mdx#a-lab-on-plain-http)). Caddy can give a lab on your own computer an HTTPS address with a certificate it makes and trusts itself, so nothing goes to the internet. If you only need such an agent to connect, [Xenon's installer](./ai-agents.mdx#xenons-installer) does it through a bridge, with no certificate.
+
+1. Install Caddy (`brew install caddy` on a Mac) and save this as a `Caddyfile`, for example in `~/xenon-https/`:
+
+   ```
+   {
+   	auto_https disable_redirects
+   }
+
+   localhost:8443 {
+   	bind 127.0.0.1 [::1]
+   	tls internal
+   	reverse_proxy 127.0.0.1:4723 {
+   		flush_interval -1
+   	}
+   }
+   ```
+
+   `tls internal` uses Caddy's own certificate. `bind` keeps the address to this computer. Port 8443 and `disable_redirects` (no redirect server on port 80) need no administrator rights.
+
+2. Start Caddy, then trust its certificate:
+
+   ```bash
+   caddy start --config ~/xenon-https/Caddyfile
+   ```
+
+   ```bash
+   caddy trust
+   ```
+
+   `caddy trust` asks for your password and adds Caddy's certificate authority to the computer's trusted certificates, so browsers accept `https://localhost:8443`. A warning that `certutil` is missing concerns Firefox only. Caddy runs until the computer restarts; start it again after.
+
+3. Tell Xenon about the proxy, then restart it: `trustProxy` set to `loopback`, and `XENON_PUBLIC_URL=https://localhost:8443`. In [Xenon Control](./xenon-control.md) they are **Trusted proxies** under Network and an environment variable of the profile.
+
+4. Give agents that run on Node.js the certificate. Node trusts its own list of certificate authorities, not the computer's, so Claude Code and `appium-mcp` refuse Caddy's certificate ("unable to get local issuer certificate") until `NODE_EXTRA_CA_CERTS` points at Caddy's root certificate: `~/Library/Application Support/Caddy/pki/authorities/local/root.crt` on a Mac, `~/.local/share/caddy/pki/authorities/local/root.crt` on Linux. For Claude Code, put it in `~/.claude/settings.json` and quit and reopen it, since it reads the setting only when it starts:
+
+   ```json
+   { "env": { "NODE_EXTRA_CA_CERTS": "/Users/you/Library/Application Support/Caddy/pki/authorities/local/root.crt" } }
+   ```
+
+   For `appium-mcp`, add it with `-e NODE_EXTRA_CA_CERTS=<that path>`.
+
+5. Sign in to the dashboard at `https://localhost:8443/xenon/` (a sign-in belongs to the address it was made at), then add the agent with `https://localhost:8443/xenon/mcp`.
 
 ## Size it
 
