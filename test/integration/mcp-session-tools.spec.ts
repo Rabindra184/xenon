@@ -311,6 +311,156 @@ describe('MCP session capabilities and recording tools (integration)', function 
     });
     expect(wrong.result.isError).to.equal(true);
     expect(answerOf(wrong.result).error).to.equal('token_mismatch');
+
+    // The phone is one for the whole suite: give it back for the next lease.
+    await callTool(await memberBearer(), 'xenon_release_device', {
+      udid: PHONE.lease,
+      lockId,
+      leaseToken,
+    });
+  });
+
+  it("puts the caller's own capabilities into alwaysMatch, under the session token", async () => {
+    const { answer } = await capabilities({
+      capabilities: {
+        platformName: 'Android',
+        'appium:automationName': 'UiAutomator2',
+        'appium:appPackage': 'com.android.settings',
+        'appium:appActivity': '.Settings',
+        'xe:options': { healingTiers: [1, 2, 3] },
+      },
+    });
+    const always = answer.capabilities.alwaysMatch;
+    expect(always).to.include({
+      platformName: 'Android',
+      'appium:automationName': 'UiAutomator2',
+      'appium:appPackage': 'com.android.settings',
+      'appium:appActivity': '.Settings',
+    });
+    expect(always['xe:options'].healingTiers).to.deep.equal([1, 2, 3]);
+    const claims = await keys.verify(always['xe:options'].sessionToken, {
+      audience: 'xenon-session',
+    });
+    expect(claims.sub).to.equal(member.user.id);
+    expect(answer.capabilities.firstMatch).to.deep.equal([{}]);
+    expect(answer).to.not.have.property('ignored');
+  });
+
+  it("a caller's capabilities can't name the session's owner or its lease", async () => {
+    const { answer } = await capabilities({
+      capabilities: {
+        'appium:appPackage': 'com.android.settings',
+        'xe:options': {
+          accessKey: 'someone-elses-key',
+          token: 'someone-elses-token',
+          sessionToken: 'not-a-token',
+          leaseMember: 3,
+          name: 'kept',
+        },
+        'xenon:options': { accessKey: 'alias-key', token: 'alias-token', build: 'kept too' },
+      },
+    });
+    const always = answer.capabilities.alwaysMatch;
+    const options = always['xe:options'];
+    expect(Object.keys(options).sort()).to.deep.equal(['name', 'sessionToken']);
+    expect(options.name).to.equal('kept');
+    const claims = await keys.verify(options.sessionToken, { audience: 'xenon-session' });
+    expect(claims.sub).to.equal(member.user.id);
+    expect(always['xenon:options']).to.deep.equal({ build: 'kept too' });
+    // Names only: a dropped field may be a secret.
+    expect(answer.ignored).to.deep.equal([
+      'xe:options.accessKey',
+      'xe:options.leaseMember',
+      'xe:options.sessionToken',
+      'xe:options.token',
+      'xenon:options.accessKey',
+      'xenon:options.token',
+    ]);
+    expect(JSON.stringify(answer)).to.not.include('someone-elses');
+  });
+
+  it("with a lease, what the lease sets keeps the lease's value", async () => {
+    const acquired = await callTool(await memberBearer(), 'xenon_acquire_device', {
+      udid: PHONE.lease,
+    });
+    expect(acquired.result.isError, acquired.result.content[0].text).to.not.equal(true);
+    const { lockId, leaseToken } = answerOf(acquired.result);
+
+    const { answer } = await capabilities({
+      lockId,
+      leaseToken,
+      capabilities: {
+        // The same as the lease's, letter case aside: not worth a mention.
+        platformName: 'android',
+        'appium:udid': 'some-other-phone',
+        'appium:appPackage': 'com.android.settings',
+        'xe:options': { leaseId: 'another-lease', name: 'kept' },
+      },
+    });
+    const always = answer.capabilities.alwaysMatch;
+    expect(always['appium:udid']).to.equal(PHONE.lease);
+    expect(always.platformName).to.equal('Android');
+    expect(always['appium:appPackage']).to.equal('com.android.settings');
+    expect(always['xe:options']).to.include({
+      leaseId: lockId,
+      leaseToken,
+      leaseMember: 0,
+      name: 'kept',
+    });
+    expect(answer.ignored).to.deep.equal(['appium:udid', 'xe:options.leaseId']);
+
+    await callTool(await memberBearer(), 'xenon_release_device', {
+      udid: PHONE.lease,
+      lockId,
+      leaseToken,
+    });
+  });
+
+  it("takes the lease from xenon_acquire_device's own capabilities, passed alone", async () => {
+    const acquired = await callTool(await memberBearer(), 'xenon_acquire_device', {
+      udid: PHONE.lease,
+    });
+    expect(acquired.result.isError, acquired.result.content[0].text).to.not.equal(true);
+    const { lockId, leaseToken, appiumCapabilities } = answerOf(acquired.result);
+
+    // Alone: the lease is the one they carry.
+    const alone = (await capabilities({ capabilities: appiumCapabilities })).answer;
+    expect(alone.capabilities.alwaysMatch['appium:udid']).to.equal(PHONE.lease);
+    expect(alone.capabilities.alwaysMatch['xe:options']).to.include({
+      leaseId: lockId,
+      leaseToken,
+      leaseMember: 0,
+    });
+    expect(alone).to.not.have.property('ignored');
+
+    // With the lease's arguments too: the same, and nothing to mention.
+    const both = (await capabilities({ lockId, leaseToken, capabilities: appiumCapabilities }))
+      .answer;
+    expect(both.capabilities.alwaysMatch['xe:options']).to.include({ leaseId: lockId, leaseToken });
+    expect(both).to.not.have.property('ignored');
+
+    // A lease id without its token can't be used, and isn't dropped quietly.
+    const half = await callTool(await memberBearer(), 'xenon_session_capabilities', {
+      capabilities: { 'appium:udid': PHONE.lease, 'xe:options': { leaseId: lockId } },
+    });
+    expect(half.result.isError).to.equal(true);
+    expect(answerOf(half.result).error).to.equal('bad_request');
+    expect(answerOf(half.result).message).to.include('lockId');
+
+    await callTool(await memberBearer(), 'xenon_release_device', {
+      udid: PHONE.lease,
+      lockId,
+      leaseToken,
+    });
+  });
+
+  it('refuses a whole W3C request as capabilities, which would nest inside alwaysMatch', async () => {
+    const { result } = await callTool(await memberBearer(), 'xenon_session_capabilities', {
+      capabilities: { alwaysMatch: { platformName: 'Android' }, firstMatch: [{}] },
+    });
+    expect(result.isError).to.equal(true);
+    expect(answerOf(result).error).to.equal('bad_request');
+    expect(answerOf(result).message).to.include('one flat object');
   });
 
   it('with per-command auth on, the URL carries xenon-session:<token> as Basic', async () => {

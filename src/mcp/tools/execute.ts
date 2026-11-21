@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Container } from 'typedi';
-import { defineTool } from '../tool';
+import { AUTH_TOKEN_PARAM, defineTool } from '../tool';
 import { ToolRefusal } from '../toolCall';
 import { invokeWebDriver } from '../invokeWebDriver';
 import type { McpCaller } from '../mcpCredential';
@@ -41,10 +41,17 @@ function isXenonCommand(script: string): boolean {
 }
 
 const executeScriptParams = z.object({
-  authToken: z.string().optional(),
-  script: z.string(),
-  args: z.unknown().optional(),
-  sessionId: z.string().min(1),
+  authToken: AUTH_TOKEN_PARAM,
+  script: z
+    .string()
+    .describe('One command from the list in this tool\'s description, named alone: "xe:smartTap".'),
+  args: z
+    .unknown()
+    .optional()
+    .describe(
+      "The command's one argument, an object or a string as the list shows it. Leave it out for a command with no arguments.",
+    ),
+  sessionId: z.string().min(1).describe('The id of an Appium session you own on this lab.'),
 });
 
 const DESCRIPTION =

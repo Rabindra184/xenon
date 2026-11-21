@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineTool } from '../tool';
+import { AUTH_TOKEN_PARAM, defineTool } from '../tool';
 import { invokeApi } from '../invokeApi';
 import { answerOf } from '../toolCall';
 
@@ -32,15 +32,20 @@ interface HealingEventOutput {
 }
 
 const selectorHealthParams = z.object({
-  authToken: z.string().optional(),
-  appId: z.string().optional(),
-  selector: z.string().optional(),
-  limit: z.number().optional(),
+  authToken: AUTH_TOKEN_PARAM,
+  appId: z.string().optional().describe('Not used yet: selectors of every app are answered.'),
+  selector: z
+    .string()
+    .optional()
+    .describe('Only this selector, matched exactly as the test wrote it.'),
+  limit: z.number().optional().describe('At most this many selectors.'),
 });
 
 const healingEventsParams = z.object({
-  authToken: z.string().optional(),
-  sessionId: z.string(),
+  authToken: AUTH_TOKEN_PARAM,
+  sessionId: z
+    .string()
+    .describe("The Appium session's id, as the create-session call answered it."),
 });
 
 /** `xenon_selector_health`: `GET /healing/selector-health` as the caller. */

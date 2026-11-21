@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { decodeJwt } from 'jose';
 import { Container } from 'typedi';
-import { defineTool } from '../tool';
+import { AUTH_TOKEN_PARAM, defineTool } from '../tool';
 import { invokeApi } from '../invokeApi';
 import { answerOf, ToolRefusal } from '../toolCall';
 import { callerOrigin } from '../publicOrigin';
@@ -11,7 +11,13 @@ import { mintSessionToken } from '../../app/routers/auth';
 import { normalizeBasePath } from '../../app/appiumBasePath';
 import { commandAuthEnabled } from '../../middleware/commandAuth';
 import { SESSION_TOKEN_BASIC_USER } from '../../middleware/basicCredential';
-import { XE_OPTIONS } from '../../services/session/xenonOptions';
+import {
+  OPTION_NAMESPACES,
+  XE_OPTIONS,
+  isOptionsObject,
+  xenonOptionsIn,
+} from '../../services/session/xenonOptions';
+import { SECRET_OPTION_FIELDS } from '../../services/session/sessionCredentials';
 import { PluginContext } from '../../PluginContext';
 
 /**
@@ -26,6 +32,11 @@ import { PluginContext } from '../../PluginContext';
  * - `capabilities` carry a fresh `xe:options.sessionToken` (audience
  *   `xenon-session`), so the session is the caller's; with a lease, the
  *   lease's own capabilities and `leaseId`, `leaseToken` and `leaseMember`.
+ * - The caller's own capabilities (the `capabilities` argument: the app, its
+ *   activity, Xenon's options) go into `alwaysMatch` under those, so the
+ *   answer goes to the create-session tool as it is. What the lease or this
+ *   tool sets always wins (appAndLabCapabilities), and `ignored` names what
+ *   lost.
  * - With per-command auth on, appium-mcp sends no credential after the
  *   create except the URL's user info, so the same token goes there as the
  *   Basic password, the user `xenon-session` (basicCredential.ts). It adds no
@@ -43,10 +54,138 @@ import { PluginContext } from '../../PluginContext';
  */
 
 const sessionCapabilitiesParams = z.object({
-  authToken: z.string().optional(),
-  lockId: z.string().min(1).optional(),
-  leaseToken: z.string().min(1).optional(),
+  authToken: AUTH_TOKEN_PARAM,
+  lockId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      'The lockId xenon_acquire_device answered, to start the session on that leased phone. Pass it with leaseToken, or neither.',
+    ),
+  leaseToken: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('The leaseToken xenon_acquire_device answered. Pass it with lockId, or neither.'),
+  capabilities: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe(
+      "Your app's own capabilities, as one flat object of W3C names, for example " +
+        '{"platformName":"Android","appium:automationName":"UiAutomator2",' +
+        '"appium:appPackage":"com.android.settings","appium:appActivity":".Settings"}. ' +
+        "They are put into the answer's capabilities.alwaysMatch, so the answer needs no editing. " +
+        "A capability the lease sets (the phone, its ports) keeps the lease's value. " +
+        'Not {alwaysMatch, firstMatch}: only what goes inside alwaysMatch.',
+    ),
 });
+
+/**
+ * The fields of `xe:options` this tool decides: the caller's identity and the
+ * lease. A caller's own value for one is dropped, in either namespace, so a
+ * key pair or another lease passed in `capabilities` can't decide whose
+ * session it is or which phone it gets.
+ */
+const LAB_OPTION_FIELDS: readonly string[] = [...SECRET_OPTION_FIELDS, 'leaseId', 'leaseMember'];
+
+/**
+ * The caller's capabilities under the lease's: the caller's first, then the
+ * lease's over them, with `xe:options` merged field by field the same way.
+ * Returns the merged map, the names of the caller's capabilities the lease's
+ * replaced, and the option fields taken out (`dropped`), for the caller to
+ * compare with what the tool sets in their place.
+ */
+function appAndLabCapabilities(
+  app: Record<string, unknown>,
+  lease: Record<string, any>,
+): { alwaysMatch: Record<string, any>; ignored: string[]; dropped: DroppedOption[] } {
+  const ignored: string[] = [];
+  const dropped: DroppedOption[] = [];
+  const alwaysMatch: Record<string, any> = {};
+
+  for (const [name, value] of Object.entries(app)) {
+    if (value === undefined) continue;
+    if (!(OPTION_NAMESPACES as readonly string[]).includes(name)) {
+      alwaysMatch[name] = value;
+      continue;
+    }
+    // Xenon's options: kept, minus the fields this tool decides.
+    if (!isOptionsObject(value)) {
+      ignored.push(name);
+      continue;
+    }
+    const options: Record<string, any> = {};
+    for (const [field, fieldValue] of Object.entries(value)) {
+      if (LAB_OPTION_FIELDS.includes(field)) dropped.push({ name, field, value: fieldValue });
+      else options[field] = fieldValue;
+    }
+    if (Object.keys(options).length > 0) alwaysMatch[name] = options;
+  }
+
+  for (const [name, value] of Object.entries(lease)) {
+    if (name === XE_OPTIONS && isOptionsObject(value)) {
+      const mine = isOptionsObject(alwaysMatch[name]) ? alwaysMatch[name] : {};
+      for (const field of Object.keys(value)) {
+        if (field in mine && !sameValue(mine[field], value[field])) {
+          ignored.push(`${name}.${field}`);
+        }
+      }
+      alwaysMatch[name] = { ...mine, ...value };
+      continue;
+    }
+    if (name in alwaysMatch && !sameValue(alwaysMatch[name], value)) ignored.push(name);
+    alwaysMatch[name] = value;
+  }
+  return { alwaysMatch, ignored, dropped };
+}
+
+/** An option field of the caller's that this tool decides, taken out of their capabilities. */
+interface DroppedOption {
+  name: string;
+  field: string;
+  value: unknown;
+}
+
+/**
+ * The lease the session is for: the `lockId` and `leaseToken` arguments, else
+ * the ones in the caller's own capabilities. xenon_acquire_device answers
+ * `appiumCapabilities` that carry both, and an agent may pass those as
+ * `capabilities` and nothing else; without this the answer would pin the
+ * leased phone with no lease, and the create would wait for a phone it can't
+ * have. A lease id without its token can't be used: refused, saying what to
+ * pass.
+ */
+function leaseOf(
+  args: { lockId?: string; leaseToken?: string },
+  app: Record<string, unknown>,
+): { lockId: string; leaseToken: string } | undefined {
+  if (args.lockId && args.leaseToken) return { lockId: args.lockId, leaseToken: args.leaseToken };
+  const mine = xenonOptionsIn(app);
+  const lockId = typeof mine.leaseId === 'string' && mine.leaseId ? mine.leaseId : undefined;
+  const leaseToken =
+    typeof mine.leaseToken === 'string' && mine.leaseToken ? mine.leaseToken : undefined;
+  if (lockId && leaseToken) return { lockId, leaseToken };
+  if (lockId || leaseToken) {
+    throw new ToolRefusal(
+      'bad_request',
+      "capabilities name a lease without both its id and its token. Pass the lease's lockId " +
+        'and leaseToken from xenon_acquire_device as arguments.',
+      400,
+    );
+  }
+  return undefined;
+}
+
+/** Whether a caller's capability says what the lease's does (platformName's letter case aside). */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (typeof a === 'string' && typeof b === 'string') return a.toLowerCase() === b.toLowerCase();
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** `capabilities` given as a whole W3C request, which would nest inside alwaysMatch. */
+function looksLikeW3cRequest(app: Record<string, unknown>): boolean {
+  return 'alwaysMatch' in app || 'firstMatch' in app;
+}
 
 /** A lease as `GET /sdk/leases/:id` answers it, as far as the tool reads it. */
 interface LeaseAnswer {
@@ -97,7 +236,11 @@ export const sessionCapabilitiesTool = defineTool({
     "What appium-mcp's create-session call needs to run an Appium session on this Xenon lab " +
     'as you. Returns {remoteServerUrl, capabilities, expiresAt}: pass remoteServerUrl and ' +
     'capabilities to the create-session tool unchanged, adding the capabilities your app ' +
-    'needs (platformName, app, ...). capabilities carry xe:options.sessionToken, which makes ' +
+    'needs (platformName, app, ...). Or pass those here as capabilities (one flat object): ' +
+    "they are put into the answer's alwaysMatch, and the answer then goes to the " +
+    'create-session tool with nothing to add. What the lease sets keeps its value; ignored ' +
+    'lists the names of capabilities of yours that were left out for that reason. ' +
+    'capabilities carry xe:options.sessionToken, which makes ' +
     'the session yours. With a device from xenon_acquire_device, pass its lockId and ' +
     'leaseToken: the capabilities then name that device and its lease. expiresAt (epoch ms) ' +
     'is when the token ends: a day by default. Connected with an API key or token, it ends ' +
@@ -113,10 +256,20 @@ export const sessionCapabilitiesTool = defineTool({
         400,
       );
     }
-    const alwaysMatch =
-      args.lockId && args.leaseToken
-        ? await leaseCapabilities(caller, args.lockId, args.leaseToken)
-        : {};
+    const app = args.capabilities ?? {};
+    if (looksLikeW3cRequest(app)) {
+      throw new ToolRefusal(
+        'bad_request',
+        'capabilities takes one flat object of capabilities (what goes inside alwaysMatch), ' +
+          'not { alwaysMatch, firstMatch }.',
+        400,
+      );
+    }
+    const lease = leaseOf(args, app);
+    const { alwaysMatch, ignored, dropped } = appAndLabCapabilities(
+      app,
+      lease ? await leaseCapabilities(caller, lease.lockId, lease.leaseToken) : {},
+    );
 
     // Under the caller's sign-in grant, so revoking it stops the session's
     // commands too; for that reason it isn't cut to the access token's hour.
@@ -126,18 +279,25 @@ export const sessionCapabilitiesTool = defineTool({
     );
     const exp = decodeJwt(sessionToken).exp;
     const options: Record<string, any> = { ...(alwaysMatch[XE_OPTIONS] ?? {}), sessionToken };
-    if (args.lockId && args.leaseToken) {
-      options.leaseId = args.lockId;
-      options.leaseToken = args.leaseToken;
+    if (lease) {
+      options.leaseId = lease.lockId;
+      options.leaseToken = lease.leaseToken;
       options.leaseMember = options.leaseMember ?? 0;
     }
     alwaysMatch[XE_OPTIONS] = options;
+    // A field of the caller's that says what the tool set anyway isn't worth
+    // a mention. Names only: a dropped field may be a secret.
+    for (const { name, field, value } of dropped) {
+      if (!sameValue(value, options[field])) ignored.push(`${name}.${field}`);
+    }
+    const left = [...new Set(ignored)].sort();
 
     const commandAuth = commandAuthEnabled() && config.authDisabled !== true;
     return {
       remoteServerUrl: webDriverUrl(callerOrigin(caller), commandAuth ? sessionToken : undefined),
       capabilities: { alwaysMatch, firstMatch: [{}] },
       expiresAt: typeof exp === 'number' ? exp * 1000 : null,
+      ...(left.length > 0 ? { ignored: left } : {}),
     };
   },
 });

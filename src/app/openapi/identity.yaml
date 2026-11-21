@@ -1702,7 +1702,7 @@ paths:
                     path: /xenon/mcp
                     url: https://xenon.example.com/xenon/mcp
                     oauth: true
-                    contractVersion: 1
+                    contractVersion: 2
                     tools:
                       - xenon_lab_info
                       - xenon_list_devices
@@ -3187,7 +3187,7 @@ components:
                   type: boolean
                 contractVersion:
                   type: integer
-                  example: 1
+                  example: 2
                 tools:
                   type: array
                   items:

@@ -48,7 +48,7 @@ describe('capabilities payload', () => {
       mcpServer: {
         path: '/xenon/mcp',
         oauth: true,
-        contractVersion: 1,
+        contractVersion: 2,
         tools: [
           'xenon_lab_info',
           'xenon_list_devices',
@@ -70,7 +70,7 @@ describe('capabilities payload', () => {
     expect(buildCapabilities().features.mcpServer).to.deep.equal({
       path: '/xenon/mcp',
       oauth: true,
-      contractVersion: 1,
+      contractVersion: 2,
       tools: [
         'xenon_lab_info',
         'xenon_list_devices',
