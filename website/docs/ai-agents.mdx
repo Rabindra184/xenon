@@ -35,6 +35,8 @@ claude mcp add --transport http xenon https://xenon.example.com/xenon/mcp
 
 Then run `/mcp` in Claude Code and choose `xenon` to sign in.
 
+The Claude desktop app's Code tab opens only an HTTPS sign-in page, even for a lab on your own computer. For a lab on plain HTTP there, see [A lab on plain HTTP](#a-lab-on-plain-http).
+
 </TabItem>
 <TabItem value="codex" label="Codex">
 
@@ -116,7 +118,7 @@ These agents change their commands and config files from time to time. If yours 
 
 The first time the agent calls a Xenon tool, it opens your browser to sign in. Ask it something like "list the Xenon phones I can use" to check.
 
-The **AI agents** page gives the installer's command and the same commands and config entries as above, with your lab's address filled in. On a lab on plain HTTP on another computer, it also warns that some agents won't sign in over plain HTTP (see [A lab on plain HTTP](#a-lab-on-plain-http)).
+The **AI agents** page gives the installer's command and the same commands and config entries as above, with your lab's address filled in. On a lab on plain HTTP with sign-in on, it also warns that the Claude desktop app won't sign in there and, on another computer, that some other agents won't either (see [A lab on plain HTTP](#a-lab-on-plain-http)).
 
 ### Xenon's installer
 
@@ -143,7 +145,7 @@ Xenon is an Appium plugin, so one computer with one phone is a lab of one. To us
    claude mcp add --transport http xenon http://localhost:4723/xenon/mcp
    ```
 
-Plain HTTP is fine on `localhost`: sign-in expects HTTPS everywhere except on your own computer.
+Plain HTTP is fine on `localhost` for most agents, `claude` in a terminal included: sign-in expects HTTPS everywhere except on your own computer. The Claude desktop app is the exception: it opens no sign-in page that isn't HTTPS, so connect it through the installer or give it a key ([A lab on plain HTTP](#a-lab-on-plain-http)).
 
 ## Sign in
 
@@ -362,11 +364,19 @@ Many labs run at an address such as `http://lab-mac:4723`. The hub serves sign-i
 
 - **Everything travels in the clear** on the network: sign-in codes, access and refresh tokens, and the session tokens in `remoteServerUrl`, as API keys and test traffic already do on such a lab. Anyone who can read the network traffic can use them.
 - **Some agents refuse to sign in over plain HTTP** to another computer, since sign-in expects HTTPS everywhere but on `localhost`.
+- **The Claude desktop app refuses it everywhere**, a lab on `localhost` included: its Code tab opens no sign-in page that isn't HTTPS ("Refused to open sign-in URL for xenon: must be https"). `claude` in a terminal signs in to a lab on `localhost`.
 
 Put the hub behind HTTPS where you can: a reverse proxy with a certificate, `XENON_PUBLIC_URL` set to its address, and `trustProxy` set for the proxy ([Behind a reverse proxy](#behind-a-reverse-proxy)). Otherwise:
 
 - **[Xenon's installer](#xenons-installer)** connects such an agent through a bridge on your computer. The agent talks to the bridge on `localhost`, which it accepts, and the bridge signs in and talks to the hub. The bridge encrypts nothing: the traffic between your computer and the lab is as readable as before.
-- **Or give that agent an API credential** in a header ([CI and other agents without a browser](#ci-and-other-agents-without-a-browser)).
+- **Or give that agent an API credential** in a header ([CI and other agents without a browser](#ci-and-other-agents-without-a-browser)). For Claude Code, with your access key and a token from **Profile**, **API tokens**:
+
+  ```bash
+  claude mcp add --transport http xenon http://lab-mac:4723/xenon/mcp \
+    --header "x-xenon-access-key: ACCESS_KEY" --header "x-xenon-token: TOKEN"
+  ```
+
+  The values are written into Claude Code's settings file, and the agent then never signs in through the browser: it gets the key's scopes, and the **AI agents** page can't sign it out. A Member's own tokens carry `sessions` and `read` but not `devices`, so with one the agent can list phones and start sessions but not lease or record phones. A key made on **Settings**, **API keys** belongs to the admin who makes it, so it is no way round that: for a Member's agent to lease phones, use the installer or put the hub behind HTTPS.
 
 ## A lab on a closed network
 

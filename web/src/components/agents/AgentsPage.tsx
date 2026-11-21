@@ -11,7 +11,7 @@ import { useToast } from '../ui/toast';
 import { useAuth } from '../../auth/auth-context';
 import { formatDateTime, formatRelative } from '../../utils/time';
 import { scopeWords } from '../oauth/scopeWords';
-import { AgentSetup, agentSetups, installerSetup, isPlainHttpHub } from './agentCommands';
+import { AgentSetup, agentSetups, installerSetup, plainHttpHub } from './agentCommands';
 
 /** The connected agents: none to list with sign-in off, or the server didn't answer. */
 type SignInList = { kind: 'off' } | { kind: 'failed' } | { kind: 'list'; items: AgentSignIn[] };
@@ -134,7 +134,7 @@ export default function AgentsPage() {
 
         {load.kind === 'ready' && (
           <>
-            <Commands hub={load.hub} copied={copied} onCopy={copy} />
+            <Commands hub={load.hub} signIn={!signInOff} copied={copied} onCopy={copy} />
             <SignIns
               signIns={load.signIns}
               signingOut={signingOut}
@@ -181,14 +181,17 @@ export default function AgentsPage() {
 
 function Commands({
   hub,
+  signIn,
   copied,
   onCopy,
 }: {
   hub: string;
+  /** Whether the lab has sign-in on: with it off, no agent signs in, over HTTP or not. */
+  signIn: boolean;
   copied: string | null;
   onCopy: (client: string, command: string) => void;
 }) {
-  const plainHttp = isPlainHttpHub(hub);
+  const plainHttp = signIn ? plainHttpHub(hub) : null;
   return (
     <Card header={<h2 id="agent-commands">Add Xenon to your agent</h2>}>
       <p className="mb-4 text-sm text-[var(--text-muted)]">
@@ -203,10 +206,15 @@ function Commands({
             className="mt-0.5 shrink-0 text-[var(--color-warning)]"
           />
           <span>
-            This lab is on plain HTTP. Some agents, Claude Code among them, won&apos;t sign in to a
-            lab on another computer over plain HTTP. Xenon&apos;s installer connects them through a
-            bridge on your computer, but the bridge encrypts nothing: ask your lab admin to put the
-            lab behind HTTPS.
+            {plainHttp === 'network'
+              ? 'This lab is on plain HTTP. Some agents, Claude Code among them, won\u2019t sign in ' +
+                'to a lab on another computer over plain HTTP, and the Claude desktop app won\u2019t ' +
+                'on any computer. Xenon\u2019s installer connects them through a bridge on your ' +
+                'computer, but the bridge encrypts nothing: ask your lab admin to put the lab ' +
+                'behind HTTPS.'
+              : 'This lab is on plain HTTP. The Claude desktop app won\u2019t sign in to it, even ' +
+                'on this computer. Xenon\u2019s installer connects it through a bridge, or see ' +
+                'Claude Code below.'}
           </span>
         </p>
       )}
@@ -215,7 +223,7 @@ function Commands({
       </div>
       <p className="mb-3 text-sm text-[var(--text-muted)]">Or add one agent yourself:</p>
       <ul aria-labelledby="agent-commands" className="space-y-4">
-        {agentSetups(hub).map((setup) => (
+        {agentSetups(hub, { plainHttpSignIn: plainHttp !== null }).map((setup) => (
           <li key={setup.client}>
             <Setup setup={setup} copied={copied === setup.client} onCopy={onCopy} />
           </li>

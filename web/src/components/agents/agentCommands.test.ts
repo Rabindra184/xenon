@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { agentSetups, installerSetup, isPlainHttpHub } from './agentCommands';
+import { agentSetups, installerSetup, plainHttpHub } from './agentCommands';
 
 const MCP_URL = 'https://hub/xenon/mcp';
 
@@ -100,16 +100,40 @@ describe('installerSetup', () => {
   });
 });
 
-describe('isPlainHttpHub', () => {
+describe('plainHttpHub', () => {
   it('is a hub on http that agents reach over the network', () => {
-    expect(isPlainHttpHub('http://lab-mac:4723')).toBe(true);
-    expect(isPlainHttpHub('http://10.0.0.4:4723')).toBe(true);
+    expect(plainHttpHub('http://lab-mac:4723')).toBe('network');
+    expect(plainHttpHub('http://10.0.0.4:4723')).toBe('network');
   });
 
-  it('is not one on https, nor one on this computer, where agents accept http', () => {
-    expect(isPlainHttpHub('https://xenon.example.com')).toBe(false);
-    expect(isPlainHttpHub('http://localhost:4723')).toBe(false);
-    expect(isPlainHttpHub('http://127.0.0.1:4723')).toBe(false);
-    expect(isPlainHttpHub('http://[::1]:4723')).toBe(false);
+  it('is one on this computer, which the Claude desktop app still refuses', () => {
+    expect(plainHttpHub('http://localhost:4723')).toBe('this-computer');
+    expect(plainHttpHub('http://127.0.0.1:4723')).toBe('this-computer');
+    expect(plainHttpHub('http://[::1]:4723')).toBe('this-computer');
+  });
+
+  it('is not one on https', () => {
+    expect(plainHttpHub('https://xenon.example.com')).toBeNull();
+  });
+});
+
+describe('Claude Code on a plain-HTTP lab with sign-in on', () => {
+  it('keeps the command and says how the desktop app connects instead', () => {
+    const setup = agentSetups('http://127.0.0.1:4723', { plainHttpSignIn: true })[0] as {
+      text: string;
+      after: string;
+    };
+    expect(setup.text).toBe(
+      'claude mcp add --transport http xenon http://127.0.0.1:4723/xenon/mcp',
+    );
+    expect(setup.after).toMatch(/to sign in/);
+    expect(setup.after).toMatch(/Claude desktop app/);
+    expect(setup.after).toMatch(/--header "x-xenon-access-key: ACCESS_KEY"/);
+    expect(setup.after).toMatch(/--header "x-xenon-token: TOKEN"/);
+  });
+
+  it('says nothing of the desktop app otherwise', () => {
+    const setup = agentSetups('http://127.0.0.1:4723')[0] as { after: string };
+    expect(setup.after).toBe('Then run /mcp in Claude Code and choose xenon to sign in.');
   });
 });

@@ -50,7 +50,10 @@ export function installerSetup(hubUrl: string): AgentSetup {
  * Each agent's way of adding the lab at `hubUrl` (its origin, such as
  * `https://xenon.example.com`).
  */
-export function agentSetups(hubUrl: string): AgentSetup[] {
+export function agentSetups(
+  hubUrl: string,
+  { plainHttpSignIn = false }: { plainHttpSignIn?: boolean } = {},
+): AgentSetup[] {
   const hub = hubUrl.replace(/\/+$/, '');
   const mcpUrl = `${hub}/xenon/mcp`;
   return [
@@ -59,7 +62,9 @@ export function agentSetups(hubUrl: string): AgentSetup[] {
       label: 'Claude Code',
       kind: 'command',
       text: `claude mcp add --transport http xenon ${mcpUrl}`,
-      after: 'Then run /mcp in Claude Code and choose xenon to sign in.',
+      after: plainHttpSignIn
+        ? CLAUDE_CODE_PLAIN_HTTP
+        : 'Then run /mcp in Claude Code and choose xenon to sign in.',
     },
     {
       client: 'codex',
@@ -112,18 +117,33 @@ export function agentSetups(hubUrl: string): AgentSetup[] {
   ];
 }
 
+/**
+ * Claude Code's next step on a plain-HTTP lab with sign-in on. The Claude
+ * desktop app opens only an https sign-in page, loopback included ("Refused
+ * to open sign-in URL for xenon: must be https"), so there the tester uses the
+ * installer's bridge, or adds an access key and token as headers, which
+ * `/xenon/mcp` takes as REST does.
+ */
+const CLAUDE_CODE_PLAIN_HTTP =
+  'Then run /mcp in Claude Code and choose xenon to sign in. The Claude desktop app won\u2019t ' +
+  'open a sign-in page on plain HTTP: there, use the installer above, or add --header ' +
+  '"x-xenon-access-key: ACCESS_KEY" --header "x-xenon-token: TOKEN" to the command, with your ' +
+  'access key and a token from Profile, API tokens. A Member\u2019s token can start sessions ' +
+  'but not lease phones.';
+
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 /**
- * Whether agents would reach the hub over plain HTTP on the network. OAuth
- * expects HTTPS except on this computer (loopback), where agents accept
- * `http://localhost`, so a hub there needs no warning.
+ * Whether the hub is on plain HTTP, and where: `this-computer` (loopback) or
+ * `network`. The Claude desktop app won't sign in over plain HTTP anywhere;
+ * some other agents refuse it on the network. Null on HTTPS.
  */
-export function isPlainHttpHub(hubUrl: string): boolean {
+export function plainHttpHub(hubUrl: string): 'this-computer' | 'network' | null {
   try {
     const url = new URL(hubUrl);
-    return url.protocol === 'http:' && !LOOPBACK.has(url.hostname);
+    if (url.protocol !== 'http:') return null;
+    return LOOPBACK.has(url.hostname) ? 'this-computer' : 'network';
   } catch {
-    return false;
+    return null;
   }
 }
