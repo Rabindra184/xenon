@@ -35,7 +35,7 @@ claude mcp add --transport http xenon https://xenon.example.com/xenon/mcp
 
 Then run `/mcp` in Claude Code and choose `xenon` to sign in.
 
-The Claude desktop app's Code tab opens only an HTTPS sign-in page, even for a lab on your own computer. For a lab on plain HTTP there, see [A lab on plain HTTP](#a-lab-on-plain-http).
+The Claude desktop app's Code tab opens only an HTTPS sign-in page, even for a lab on your own computer. For a lab on plain HTTP there, see [A lab on plain HTTP](#a-lab-on-plain-http) and [HTTPS on one computer](./deployment.md#https-on-one-computer).
 
 </TabItem>
 <TabItem value="codex" label="Codex">
@@ -366,7 +366,7 @@ Many labs run at an address such as `http://lab-mac:4723`. The hub serves sign-i
 - **Some agents refuse to sign in over plain HTTP** to another computer, since sign-in expects HTTPS everywhere but on `localhost`.
 - **The Claude desktop app refuses it everywhere**, a lab on `localhost` included: its Code tab opens no sign-in page that isn't HTTPS ("Refused to open sign-in URL for xenon: must be https"). `claude` in a terminal signs in to a lab on `localhost`.
 
-Put the hub behind HTTPS where you can: a reverse proxy with a certificate, `XENON_PUBLIC_URL` set to its address, and `trustProxy` set for the proxy ([Behind a reverse proxy](#behind-a-reverse-proxy)). Otherwise:
+Put the hub behind HTTPS where you can: a reverse proxy with a certificate, `XENON_PUBLIC_URL` set to its address, and `trustProxy` set for the proxy ([Behind a reverse proxy](#behind-a-reverse-proxy), with nginx and Caddy examples in [HTTPS behind a reverse proxy](./deployment.md#https-behind-a-reverse-proxy)). For a lab on your own computer, [HTTPS on one computer](./deployment.md#https-on-one-computer) does it with a certificate Caddy makes itself; give the agent that certificate as it says. Otherwise:
 
 - **[Xenon's installer](#xenons-installer)** connects such an agent through a bridge on your computer. The agent talks to the bridge on `localhost`, which it accepts, and the bridge signs in and talks to the hub. The bridge encrypts nothing: the traffic between your computer and the lab is as readable as before.
 - **Or give that agent an API credential** in a header ([CI and other agents without a browser](#ci-and-other-agents-without-a-browser)). For Claude Code, with your access key and a token from **Profile**, **API tokens**:

@@ -59,10 +59,10 @@ Appium writes the body of every request to its log before Xenon sees it. The das
 
 ## Serve Xenon over HTTPS, through a proxy
 
-Put a reverse proxy with HTTPS in front of the hub, and let only the proxy reach Appium's port. [HTTPS behind a reverse proxy](./deployment.md#https-behind-a-reverse-proxy) has an nginx example. For security, the proxy has to:
+Put a reverse proxy with HTTPS in front of the hub, and let only the proxy reach Appium's port. [HTTPS behind a reverse proxy](./deployment.md#https-behind-a-reverse-proxy) has nginx and Caddy examples. For security, the proxy has to:
 
 - **Set `X-Forwarded-Proto`,** so the sign-in cookie is marked `Secure`.
-- **Set `X-Forwarded-For` itself,** overwriting what the client sent. Xenon limits sign-in attempts per client address and takes the address from that header, so a client that could set it could dodge the limit.
+- **Set `X-Forwarded-For` itself,** overwriting what the client sent, and set `trustProxy` to the proxy (a hop count such as `1`, its address, or `loopback`). Xenon limits sign-in attempts per caller address and reads it from that header only as far as `trustProxy` allows. Unset, everyone shares the proxy's one limit; `true` trusts what a client that reaches Xenon around the proxy writes there, so it could dodge the limit.
 - **Keep the `Host` header, port included,** or list the dashboard's address in `XENON_ALLOWED_ORIGINS`. Changes made with the dashboard's cookie are accepted only from the server's own address: see [Requests from a browser](./authentication.md#requests-from-a-browser).
 
 Then set `XENON_PUBLIC_URL` to the hub's HTTPS address, such as `https://xenon.example.com`. Password reset links are built from it, never from the `Host` header of a request, which whoever sends it chooses. Without it, Xenon emails no reset links: see [A forgotten password](./authentication.md#a-forgotten-password).
